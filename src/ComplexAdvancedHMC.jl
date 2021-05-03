@@ -1,4 +1,4 @@
-module AdvancedHMC
+module ComplexAdvancedHMC
 
 const DEBUG = convert(Bool, parse(Int, get(ENV, "DEBUG_AHMC", "0")))
 
@@ -25,7 +25,7 @@ include("utilities.jl")
 # z: phase point / a pair of θ and r
 
 include("metric.jl")
-export UnitEuclideanMetric, DiagEuclideanMetric, DiagEuclideanMatrixMetric, DenseEuclideanMetric
+export UnitEuclideanMetric, EuclideanMetric, HermitianMetric
 
 include("hamiltonian.jl")
 export Hamiltonian
@@ -94,11 +94,9 @@ StepSizeAdaptor(δ::AbstractFloat, i::AbstractIntegrator) = StepSizeAdaptor(δ, 
 
 MassMatrixAdaptor(m::UnitEuclideanMetric{T}) where {T} =
     UnitMassMatrix{T}()
-MassMatrixAdaptor(m::DiagEuclideanMetric{T}) where {T} =
+MassMatrixAdaptor(m::EuclideanMetric{T}) where {T} =
     WelfordVar{T}(size(m); var=copy(m.M⁻¹))
-MassMatrixAdaptor(m::DiagEuclideanMatrixMetric{T}) where {T} =
-    WelfordVar{T}(size(m); var=copy(m.M⁻¹))
-MassMatrixAdaptor(m::DenseEuclideanMetric{T}) where {T} =
+MassMatrixAdaptor(m::HermitianMetric{T}) where {T} =
     WelfordCov{T}(size(m); cov=copy(m.M⁻¹))
 
 MassMatrixAdaptor(

@@ -20,7 +20,7 @@ end
 reconstruct(κ::AbstractMCMCKernel, adaptor::AbstractAdaptor) = 
     reconstruct(κ, τ=reconstruct(κ.τ, adaptor))
 
-function resize(h::Hamiltonian, θ::AbstractVecOrMat{T}) where {T<:AbstractFloat}
+function resize(h::Hamiltonian, θ::AbstractVecOrMat{T}) where {T<:AbstractArray}
     metric = h.metric
     if size(metric) != size(θ)
         metric = getname(metric)(size(θ))
@@ -36,7 +36,7 @@ end
 function sample_init(
     rng::Union{AbstractRNG, AbstractVector{<:AbstractRNG}}, 
     h::Hamiltonian, 
-    θ::AbstractVecOrMat{<:AbstractFloat}
+    θ::AbstractArray
 )
     # Ensure h.metric has the same dim as θ.
     h = resize(h, θ)
@@ -63,7 +63,7 @@ Adaptation.adapt!(
     adaptor::Adaptation.NoAdaptation,
     i::Int,
     n_adapts::Int,
-    θ::AbstractVecOrMat{<:AbstractFloat},
+    θ::AbstractArray,
     α::AbstractScalarOrVec{<:AbstractFloat}
 ) = h, κ, false
 
@@ -73,7 +73,7 @@ function Adaptation.adapt!(
     adaptor::AbstractAdaptor,
     i::Int,
     n_adapts::Int,
-    θ::AbstractVecOrMat{<:AbstractFloat},
+    θ::AbstractArray,
     α::AbstractScalarOrVec{<:AbstractFloat}
 )
     isadapted = false
@@ -107,7 +107,7 @@ simple_pm_next!(pm, stat::NamedTuple) = ProgressMeter.next!(pm)
 sample(
     h::Hamiltonian,
     κ::AbstractMCMCKernel,
-    θ::AbstractVecOrMat{<:AbstractFloat},
+    θ::AbstractArray,
     n_samples::Int,
     adaptor::AbstractAdaptor=NoAdaptation(),
     n_adapts::Int=min(div(n_samples, 10), 1_000);
@@ -153,6 +153,7 @@ Sample `n_samples` samples using the proposal `κ` under Hamiltonian `h`.
 - `verbose` controls the verbosity
 - `progress` controls whether to show the progress meter or not
 """
+# T<:AbstractVecOrMat{<:Union{AbstractFloat, Complex, Array{ComplexF64,1}}}
 function sample(
     rng::Union{AbstractRNG, AbstractVector{<:AbstractRNG}},
     h::Hamiltonian,
@@ -165,11 +166,11 @@ function sample(
     verbose::Bool=true,
     progress::Bool=false,
     (pm_next!)::Function=pm_next!
-) where {T<:AbstractVecOrMat{<:AbstractFloat}}
+) where {T<:AbstractArray}
     @assert !(drop_warmup && (adaptor isa Adaptation.NoAdaptation)) "Cannot drop warmup samples if there is no adaptation phase."
     # Prepare containers to store sampling results
     n_keep = n_samples - (drop_warmup ? n_adapts : 0)
-    θs, stats = Vector{T}(undef, n_keep), Vector{NamedTuple}(undef, n_keep)
+    θs, stats = AbstractArray{T}(undef, n_keep), AbstractArray{NamedTuple}(undef, n_keep)
     # Initial sampling
     h, t = sample_init(rng, h, θ)
     # Progress meter

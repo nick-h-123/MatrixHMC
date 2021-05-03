@@ -5,7 +5,7 @@ using LinearAlgebra: LinearAlgebra
 using Statistics: Statistics
 using Parameters: @unpack, @pack!
 
-using ..AdvancedHMC: DEBUG, AbstractScalarOrVec
+using ..ComplexAdvancedHMC: DEBUG, AbstractScalarOrVec
 
 abstract type AbstractAdaptor end
 function getM⁻¹ end
@@ -40,7 +40,7 @@ getϵ(ca::NaiveHMCAdaptor) = getϵ(ca.ssa)
 # TODO: implement consensus adaptor
 function adapt!(
     nca::NaiveHMCAdaptor,
-    θ::AbstractVecOrMat{<:AbstractFloat},
+    θ::AbstractVecOrMat{<:Union{AbstractFloat, Complex}},
     α::AbstractScalarOrVec{<:AbstractFloat}
 )
     adapt!(nca.ssa, θ, α)

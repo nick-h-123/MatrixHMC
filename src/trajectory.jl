@@ -262,7 +262,7 @@ function transition(
 end
 
 # Return the accepted phase point
-function accept_phasepoint!(z::T, z′::T, is_accept::Bool) where {T<:PhasePoint{<:AbstractVecOrMat}}
+function accept_phasepoint!(z::T, z′::T, is_accept::Bool) where {T<:PhasePoint{<:AbstractVector}}
     if is_accept
         return z′
     else
@@ -674,13 +674,13 @@ end
 function find_good_stepsize(
     rng::AbstractRNG,
     h::Hamiltonian,
-    θ::AbstractVecOrMat{T};
+    θ::AbstractArray;
     max_n_iters::Int=100,
-) where {T<:Real}
+)
     # Initialize searching parameters
-    ϵ′ = ϵ = T(0.1)
-    a_min, a_cross, a_max = T(0.25), T(0.5), T(0.75) # minimal, crossing, maximal accept ratio
-    d = T(2.0)
+    ϵ′ = ϵ = Float64(0.1)
+    a_min, a_cross, a_max = Float64(0.25), Float64(0.5), Float64(0.75) # minimal, crossing, maximal accept ratio
+    d = Float64(2.0)
     # Create starting phase point
     r = rand(rng, h.metric) # sample momentum variable
     z = phasepoint(h, θ, r)
@@ -740,7 +740,7 @@ end
 
 function find_good_stepsize(
     h::Hamiltonian,
-    θ::AbstractVecOrMat{<:AbstractFloat};
+    θ::AbstractArray;
     max_n_iters::Int=100,
 )
     return find_good_stepsize(GLOBAL_RNG, h, θ; max_n_iters=max_n_iters)
@@ -754,20 +754,5 @@ function mh_accept_ratio(
 ) where {T<:AbstractFloat}
     α = min(one(T), exp(Horiginal - Hproposal))
     accept = rand(rng, T) < α
-    return accept, α
-end
-
-function mh_accept_ratio(
-    rng::Union{AbstractRNG, AbstractVector{<:AbstractRNG}},
-    Horiginal::AbstractVector{<:T},
-    Hproposal::AbstractVector{<:T},
-) where {T<:AbstractFloat}
-    α = min.(one(T), exp.(Horiginal .- Hproposal))
-    # NOTE: There is a chance that sharing the RNG over multiple
-    #       chains for accepting / rejecting might couple
-    #       the chains. We need to revisit this more rigirously 
-    #       in the future. See discussions at 
-    #       https://github.com/TuringLang/AdvancedHMC.jl/pull/166#pullrequestreview-367216534
-    accept = rand(rng, T, length(Horiginal)) .< α
     return accept, α
 end
