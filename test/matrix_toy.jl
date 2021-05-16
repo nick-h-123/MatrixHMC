@@ -101,7 +101,7 @@ adaptor = StepSizeAdaptor(0.7, integrator)
 progmeter=true
 verb=true
 #MersenneTwister(1234), 
-n_samples = 400
+n_samples = 500
 n_adapts = 400
 throwaway = 300
 Xs, stats = sample(hamiltonian, proposal, initial_X, 
@@ -135,5 +135,11 @@ end
 # generate data
 twopt_0, twopt_0s, twopt_0s_ave = getData(Xs, throwaway)
 println("mK<X^i(0)X^i(0)>/N^2 = ", twopt_0[1])
-plot(twopt_0s)
-plot!(twopt_0s_ave, legend=false)
+plot(twopt_0s, label="value",
+     linewidth=1)
+plot!(twopt_0s_ave, label="mean",
+      title=string("Equal time 2-point: ", "N = ", N, ", g = ", g),
+      linewidth=2)
+xlabel!("Number of samples")
+display(ylabel!(L"\frac{9 m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"))
+savefig("twopt_MT.png")
