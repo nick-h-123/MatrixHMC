@@ -87,16 +87,18 @@ struct MatrixMetric{T,A<:AbstractVecOrMat{T}} <: AbstractMetric
     sqrtM⁻¹ ::  A
     # Size of matrix
     N       :: Int64
-    # Momenta
+    # Momentum cutoff
     Λ       :: Int64
+    # Number of matrices
+    K       :: Int64
 end
 
 function MatrixMetric(M⁻¹::AbstractArray)
-    return MatrixMetric(M⁻¹, sqrt.(M⁻¹), length(M⁻¹[1,1][1,:]), Int((length(M⁻¹)-1)/2))
+    return MatrixMetric(M⁻¹, map(M->sqrt.(M), M⁻¹), length(M⁻¹[1][1,1][1,:]), Int((length(M⁻¹[1])-1)/2), length(M⁻¹))
 end
-MatrixMetric(::Type{T}, NN::Int, ΛΛ::Int) where {T} = MatrixMetric(map(i->ones(T, (NN,NN)), -ΛΛ:ΛΛ))
-MatrixMetric(NN::Int, ΛΛ::Int) = MatrixMetric(Float64, NN, ΛΛ)
-
+MatrixMetric(::Type{T}, NN::Int, ΛΛ::Int, KK::Int) where {T} = MatrixMetric(map(kk-> map(i->ones(T, (NN,NN)), -ΛΛ:ΛΛ), 1:KK))
+MatrixMetric(NN::Int, ΛΛ::Int) = MatrixMetric(Float64, NN, ΛΛ, 1)
+MatrixMetric(NN::Int, ΛΛ::Int, K::Int) = MatrixMetric(Float64, NN, ΛΛ, K)
 renew(ue::MatrixMetric, M⁻¹) = MatrixMetric(M⁻¹)
 
 Base.size(e::MatrixMetric, dim...) = size(e.M⁻¹, dim...)
@@ -153,15 +155,19 @@ function _rand(
 ) 
     NN = metric.N
     ΛΛ = metric.Λ
+    KK = metric.K
     function hMat()
         temp = randn(ComplexF64, NN, NN)
         return Array(sqrt(0.5)*(temp+adjoint(temp)))
     end
-    oneTokSize = map(i->hMat(),1:ΛΛ)
-    mkSizetoMOne = reverse(oneTokSize)
-    zeroMode = Array(randn(ComplexF64, NN, NN))
-    zeroMode = sqrt(0.5)*(zeroMode+adjoint(zeroMode))
-    return Array(vcat(mkSizetoMOne, [zeroMode], oneTokSize))
+    function getp_i()
+        oneTokSize = map(i->hMat(),1:ΛΛ)
+        mkSizetoMOne = reverse(oneTokSize)
+        zeroMode = Array(randn(ComplexF64, NN, NN))
+        zeroMode = sqrt(0.5)*(zeroMode+adjoint(zeroMode))
+        return Array(vcat(mkSizetoMOne, [zeroMode], oneTokSize))
+    end
+    return map(kk->getp_i(), 1:KK)
 end
 
 Base.rand(rng::AbstractRNG, metric::AbstractMetric) = _rand(rng, metric)    # this disambiguity is required by Random.rand

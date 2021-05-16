@@ -118,7 +118,10 @@ function neg_energy(h::Hamiltonian{<:HermitianMetric}, r::T, θ::T) where {T<:Ab
 end
 
 function neg_energy(h::Hamiltonian{<:MatrixMetric}, r, θ)  
-    return -0.5*sum(map(xk -> real(tr(xk*xk)), r))
+    function r_i_term(ri)
+        return sum(map(rk -> real(tr(rk*rk)), ri))
+    end
+    return -0.5*sum(map(r_i_term, r))
 end
 
 

@@ -9,6 +9,7 @@ using Random: GLOBAL_RNG, AbstractRNG
 using ProgressMeter: ProgressMeter
 using Parameters: @unpack, reconstruct
 using ArgCheck: @argcheck
+using StatsBase: autocor
 
 using DocStringExtensions
 
@@ -39,32 +40,6 @@ export Trajectory, HMCKernel,
        ClassicNoUTurn, GeneralisedNoUTurn, StrictGeneralisedNoUTurn,
        EndPointTS, SliceTS, MultinomialTS, 
        find_good_stepsize
-
-# Useful defaults
-
-struct NUTS{TS, TC} end
-
-"""
-$(SIGNATURES)
-
-Convenient constructor for the no-U-turn sampler (NUTS).
-This falls back to `HMCKernel(Trajectory{TS}(int, TC(args...; kwargs...)))` where
-
-- `TS<:Union{MultinomialTS, SliceTS}` is the type for trajectory sampler
-- `TC<:Union{ClassicNoUTurn, GeneralisedNoUTurn, StrictGeneralisedNoUTurn}` is the type for termination criterion.
-
-See [`ClassicNoUTurn`](@ref), [`GeneralisedNoUTurn`](@ref) and [`StrictGeneralisedNoUTurn`](@ref) for details in parameters.
-"""
-NUTS{TS, TC}(int::AbstractIntegrator, args...; kwargs...) where {TS, TC} = 
-    HMCKernel(Trajectory{TS}(int, TC(args...; kwargs...)))
-NUTS(int::AbstractIntegrator, args...; kwargs...) = 
-    HMCKernel(Trajectory{MultinomialTS}(int, GeneralisedNoUTurn(args...; kwargs...)))
-NUTS(ϵ::AbstractScalarOrVec{<:Real}) =
-    HMCKernel(Trajectory{MultinomialTS}(Leapfrog(ϵ), GeneralisedNoUTurn()))
-
-export NUTS
-
-# Deprecations for trajectory.jl
 
 abstract type AbstractTrajectory end
 
