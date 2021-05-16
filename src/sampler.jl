@@ -130,19 +130,6 @@ sample(
 )
 
 """
-    sample(
-        rng::AbstractRNG,
-        h::Hamiltonian,
-        κ::AbstractMCMCKernel,
-        θ::AbstractVecOrMat{T},
-        n_samples::Int,
-        adaptor::AbstractAdaptor=NoAdaptation(),
-        n_adapts::Int=min(div(n_samples, 10), 1_000);
-        drop_warmup::Bool=false,
-        verbose::Bool=true,
-        progress::Bool=false
-    )
-
 Sample `n_samples` samples using the proposal `κ` under Hamiltonian `h`.
 - The randomness is controlled by `rng`. 
     - If `rng` is not provided, `GLOBAL_RNG` will be used.
@@ -170,7 +157,7 @@ function sample(
     @assert !(drop_warmup && (adaptor isa Adaptation.NoAdaptation)) "Cannot drop warmup samples if there is no adaptation phase."
     # Prepare containers to store sampling results
     n_keep = n_samples - (drop_warmup ? n_adapts : 0)
-    θs, stats = AbstractArray{T}(undef, n_keep), AbstractArray{NamedTuple}(undef, n_keep)
+    θs, stats = Array{T}(undef, n_keep), Array{NamedTuple}(undef, n_keep)
     # Initial sampling
     h, t = sample_init(rng, h, θ)
     # Progress meter

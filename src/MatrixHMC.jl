@@ -3,7 +3,7 @@ module MatrixHMC
 const DEBUG = convert(Bool, parse(Int, get(ENV, "DEBUG_AHMC", "0")))
 
 using Statistics: mean, var, middle
-using LinearAlgebra: Symmetric, UpperTriangular, mul!, ldiv!, dot, I, diag, cholesky, UniformScaling
+using LinearAlgebra: tr, Hermitian, Symmetric, UpperTriangular, mul!, ldiv!, dot, I, diag, cholesky, UniformScaling
 using StatsFuns: logaddexp, logsumexp
 using Random: GLOBAL_RNG, AbstractRNG
 using ProgressMeter: ProgressMeter
@@ -25,7 +25,7 @@ include("utilities.jl")
 # z: phase point / a pair of θ and r
 
 include("metric.jl")
-export UnitEuclideanMetric, EuclideanMetric, HermitianMetric
+export UnitEuclideanMetric, EuclideanMetric, HermitianMetric, MatrixMetric
 
 include("hamiltonian.jl")
 export Hamiltonian

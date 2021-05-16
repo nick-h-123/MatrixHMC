@@ -35,7 +35,11 @@ function ∂H∂r(h::Hamiltonian{<:HermitianMetric}, r::AbstractVecOrMat)
     end
 end
 
-struct PhasePoint{T<:AbstractVecOrMat{<:AbstractArray}, V<:DualValue}
+function ∂H∂r(h::Hamiltonian{<:MatrixMetric}, r::AbstractArray)
+    return r
+end
+
+struct PhasePoint{T<:AbstractArray, V<:DualValue}
     θ::T  # Position variables / model parameters.
     r::T  # Momentum variables
     ℓπ::V # Cached neg potential energy for the current θ.
@@ -65,7 +69,7 @@ phasepoint(
     r::T;
     ℓπ=∂H∂θ(h, θ),
     ℓκ=DualValue(neg_energy(h, r, θ), ∂H∂r(h, r))
-) where {T<:AbstractVecOrMat} = PhasePoint(θ, r, ℓπ, ℓκ)
+) where {T<:AbstractArray} = PhasePoint(θ, r, ℓπ, ℓκ)
 
 Base.isfinite(v::DualValue) = all(isfinite, v.value) && all(isfinite, v.gradient)
 Base.isfinite(v::AbstractVecOrMat) = all(isfinite, v)
@@ -113,6 +117,10 @@ function neg_energy(h::Hamiltonian{<:HermitianMetric}, r::T, θ::T) where {T<:Ab
     end
 end
 
+function neg_energy(h::Hamiltonian{<:MatrixMetric}, r, θ)  
+    return -0.5*sum(map(xk -> real(tr(xk*xk)), r))
+end
+
 
 energy(args...) = -neg_energy(args...)
 
@@ -138,20 +146,3 @@ refresh(
     z::PhasePoint,
 ) = phasepoint(h, z.θ, rand(rng, h.metric))
 
-"""
-Partial momentum refreshment with refresh rate `α`.
-
-## References
-
-1. Neal, Radford M. "MCMC using Hamiltonian dynamics." Handbook of markov chain monte carlo 2.11 (2011): 2.
-"""
-struct PartialMomentumRefreshment{F<:AbstractFloat} <: AbstractMomentumRefreshment
-    α::F
-end
-
-refresh(
-    rng::Union{AbstractRNG, AbstractVector{<:AbstractRNG}},
-    ref::PartialMomentumRefreshment,
-    h::Hamiltonian,
-    z::PhasePoint,
-) = phasepoint(h, z.θ, ref.α * z.r + (1 - ref.α^2) * rand(rng, h.metric))

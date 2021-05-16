@@ -14,7 +14,7 @@ function fourierPairs(Λ, n, K)
         for i = 1:2*Λ+1
             v_i = ks[i]
             if abs(v_i - K) <= Λ
-                append!(list, [(v_i, -v_i + K)])
+                append!(list, [[v_i, -v_i + K]])
             end
         end
     end
@@ -22,7 +22,7 @@ function fourierPairs(Λ, n, K)
         for i = -Λ:Λ
             for j = -Λ:Λ
                 if abs(K - i - j) <= Λ
-                    newEntry = (i, j, -(i+j) + K)
+                    newEntry = [i, j, -(i+j) + K]
                     append!(list, [newEntry])
                 end
             end
@@ -33,7 +33,7 @@ function fourierPairs(Λ, n, K)
             for j = -Λ:Λ
                 for k = -Λ:Λ
                     if abs(K - i - j - k) <= Λ
-                        newEntry = (i, j, k, -(i + j + k) + K)
+                        newEntry = [i, j, k, -(i + j + k) + K]
                         append!(list, [newEntry])
                     end
                 end
