@@ -5,7 +5,7 @@ using LinearAlgebra: LinearAlgebra
 using Statistics: Statistics
 using Parameters: @unpack, @pack!
 
-using ..ComplexAdvancedHMC: DEBUG, AbstractScalarOrVec
+using ..MatrixHMC: DEBUG, AbstractScalarOrVec
 
 abstract type AbstractAdaptor end
 function getM⁻¹ end

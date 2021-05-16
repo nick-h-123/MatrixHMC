@@ -1,4 +1,4 @@
-module ComplexAdvancedHMC
+module MatrixHMC
 
 const DEBUG = convert(Bool, parse(Int, get(ENV, "DEBUG_AHMC", "0")))
 
@@ -126,24 +126,4 @@ include("sampler.jl")
 export sample
 
 include("contrib/ad.jl")
-
-### Init
-
-using Requires
-
-function __init__()
-    @require OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed" begin
-        export DiffEqIntegrator
-        include("contrib/diffeq.jl")
-    end
-
-    @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" begin
-        include("contrib/forwarddiff.jl")
-    end
-
-    @require Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f" begin
-        include("contrib/zygote.jl")
-    end
-end
-
 end # module
