@@ -3,7 +3,7 @@ using Revise, Plots, Random, Statistics
 using DataFrames, GLM
 using FiniteDifferences
 using MathLink, Optim
-using StatsBase: autocor
+using StatsBase: autocor, tr
 
 #include("variational_ON.jl")
 include("helpers.jl")
@@ -26,18 +26,34 @@ function action(X)
         return sum(map(k-> freeFact[k]*real(tr(Xi[k]*Xi[k])), 1:kSize))
     end
     g_term_arr = zeros(length(fourPairs))
-    j = 1
+    kP = 1
     if g != 0
+        kDict = Dict()
         Threads.@threads for kp in fourPairs
             k1, k2, k3, k4 = map(k->abs(k)+Λ+1, kp)
-            Xi_term_1 = sum(map(Xi->comm(Xi[k1],Xi[k2]), X))
-            if k1 == k3 && k3 == k4
-                Xi_term_2 = Xi_term_1
+            if k1 == k2 || k3 == k4
+                g_term_arr[kP] = 0.0
             else
-                Xi_term_2 = sum(map(Xi->comm(Xi[k3],Xi[k4]), X))
+                p = (1,[k1,k2,k3,k4])
+                if haskey(kDict, p)
+                    g_term_arr[kP] = kDict[p]
+                else
+                    Xi_term_1 = sum(map(Xi->comm(Xi[k1],Xi[k2]), X))
+                    if k1 == k3 && k3 == k4
+                        Xi_term_2 = Xi_term_1
+                    else
+                        Xi_term_2 = sum(map(Xi->comm(Xi[k3],Xi[k4]), X))
+                    end
+                    g_term_arr_kP = real(tr(Xi_term_1*Xi_term_2))
+                    kcombos = gen_combos(p)
+                    for kcombo in kcombos
+                        kDict[kcombo] = kcombo[1]*g_term_arr_kP
+                    end
+                    g_term_arr[kP] = g_term_arr_kP
+                    kP+=1
+                end
             end
-            g_term_arr[j] = real(tr(Xi_term_1*Xi_term_2))
-            j+=1
+        #j+=1
         end
     end
     g_term = sum(g_term_arr)
@@ -86,7 +102,7 @@ hamiltonian = Hamiltonian(metric, ℓπ, ∂ℓπ∂φ)
 # Define a leapfrog solver, with initial step size chosen heuristically
 initial_X = rand(metric)
 rng = MersenneTwister(1234)
-initial_ϵ = find_good_stepsize(rng, hamiltonian, initial_X)   
+initial_ϵ = find_good_stepsize(rng, hamiltonian, initial_X)
 # Define integrator
 integrator = Leapfrog(initial_ϵ)
 # Define an HMC sampler
@@ -102,8 +118,8 @@ adaptor = StepSizeAdaptor(0.7, integrator)
 progmeter=true
 verb=true
 #MersenneTwister(1234), 
-n_samples = 500
-n_adapts = 400
+n_samples = 300
+n_adapts = 300
 throwaway = 300
 Xs, stats = sample(hamiltonian, proposal, initial_X, 
                    n_samples+throwaway, adaptor, n_adapts,
@@ -144,4 +160,4 @@ plot!(twopt_0s_ave, label="mean",
       linewidth=2)
 xlabel!("Number of samples")
 display(ylabel!(L"\frac{9 m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"))
-savefig("twopt_MT.png")
+#savefig("twopt_MT.png")

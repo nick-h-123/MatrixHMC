@@ -140,28 +140,24 @@ function comm(X::AbstractArray,Y::AbstractArray)
     return X*Y-Y*X
 end
 
-i = 1
-j = 2
 k1 = 3
 k2 = 4
-k3 = 4
+k3 = 5
 k4 = 6
-p = (1,[i,j,k1,k2,k3,k4])
+p = (1,[k1,k2,k3,k4])
 function gen_combos(p)
-    i,j,k1,k2,k3,k4=p[2]
+    k1,k2,k3,k4=p[2]
     combos = [p]
     # commutator properties
-    append!(combos, [(-1, [i,j,k2,k1,k3,k4])])
-    append!(combos, [(-1, [i,j,k1,k2,k4,k3])])
-    append!(combos, [(+1, [i,j,k2,k1,k4,k3])])
+    append!(combos, [(-1, [k2,k1,k3,k4])])
+    append!(combos, [(-1, [k1,k2,k4,k3])])
+    append!(combos, [(+1, [k2,k1,k4,k3])])
     # trace properties
-    append!(combos, [(+1, [i,j,k3,k4,k1,k2])])
+    append!(combos, [(+1, [k3,k4,k1,k2])])
     # trace + comm properties
-    append!(combos, [(-1, [i,j,k4,k3,k1,k2])])
-    append!(combos, [(-1, [i,j,k3,k4,k2,k1])])
-    append!(combos, [(+1, [i,j,k4,k3,k2,k1])])
-    # i <-> j
-    ijswitch = map(combo -> (combo[1], vcat([combo[2][2], combo[2][1]], combo[2][3:end])), combos)
-    return unique(vcat(combos,ijswitch))
+    append!(combos, [(-1, [k4,k3,k1,k2])])
+    append!(combos, [(-1, [k3,k4,k2,k1])])
+    append!(combos, [(+1, [k4,k3,k2,k1])])
+    return combos
 end
 combos = gen_combos(p)
