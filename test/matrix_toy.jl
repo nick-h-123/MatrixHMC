@@ -37,6 +37,7 @@ function action(X)
                 Xi_term_2 = sum(map(Xi->comm(Xi[k3],Xi[k4]), X))
             end
             g_term_arr[j] = real(tr(Xi_term_1*Xi_term_2))
+            j+=1
         end
     end
     g_term = sum(g_term_arr)
@@ -125,7 +126,7 @@ function getData(Xs, throwaway)
     #twopt_0_exts = map(x->x[2], twopt_data)
     twopt_0s = map(twopt_0, Xkeeps)
     twopt_0s_ave = running_ave(twopt_0s)
-    twopts_0_ave = expectation_value(twopt_0, Xkeeps)
+    twopts_0_ave = expectation_value(twopt_0, Xkeeps, 0.01)
     return twopts_0_ave, twopt_0s, twopt_0s_ave
 end
 function extendsum(t, d1, d2, β, Λmax=0)
@@ -134,7 +135,8 @@ function extendsum(t, d1, d2, β, Λmax=0)
 end
 # generate data
 twopt_0, twopt_0s, twopt_0s_ave = getData(Xs, throwaway)
-println("mK<X^i(0)X^i(0)>/N^2 = ", twopt_0[1])
+println("mK<X^i(0)X^i(0)>/N^2 = ", round.(twopt_0[1], sigdigits=5))
+println("Effective sample size = ", n_samples/twopt_0[3])
 plot(twopt_0s, label="value",
      linewidth=1)
 plot!(twopt_0s_ave, label="mean",
