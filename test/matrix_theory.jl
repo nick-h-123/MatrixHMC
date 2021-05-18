@@ -12,14 +12,15 @@ include("helpers.jl")
 m = 10.0 # mass
 β = 10.0/m # total time
 ω = 2*pi/β # momentum spacing
-Λ = 2 # max momentum index
+Λ = 3 # max momentum index
 threePairs = fourierPairs(Λ, 3, 0) # k1 + k2 + k3 = 0
 fourPairs = fourierPairs(Λ, 4, 0) # k1 + k2 + k3 + k4 = 0
 threePairsK = map(k -> fourierPairs(Λ, 3, k), -Λ:Λ) # k1 + k2 + k3 + k4 = K
+twoPairsK = map(k -> fourierPairs(Λ, 2, k), -Λ:Λ) # k1 + k2 = K
 N = 2 # size of each matric
-Ki = 9 # number of bosonic matrices
+Ki = 2 # number of bosonic matrices
 K = Ki+1 # num of bosonic + one gauge
-g = 1.0 # YM coupling
+g = 0.0 # YM coupling
 kSize = 2*Λ+1 # total num of modes
 # helper objects
 freeFact = β*map(k -> ((ω*k)^2 + m^2), -Λ:Λ) # coefficient for free term
@@ -120,8 +121,9 @@ function action(u, useDict=true)
             return 2*sum(dXiCommAXiterm_arr)
         end
         g_term = calc_gterm()
+        return freeterm + β*g_term + β*g^2*g2_term
     end
-    return freeterm + β*g_term + β*g^2*g2_term
+    return freeterm
 end
 # test action
 metric = MatrixMetric(N, Λ, K)
@@ -161,46 +163,75 @@ function ∂ℓπ∂u(u::AbstractVector)
     X = u[1:Ki]
     A = u[K]
     # return free term for each X^i
-    function ∂ℓπ∂X()
-        function freeTerm_i(Xi)
-            return map(k -> freeFact[k].*Xi[k], 1:kSize)
-        end
-        # calculate free term for each X^i
-        freeTerm = map(freeTerm_i, X)
-        # initialize interaction term
-        g2_term = map(kk->map(k->zeros(ComplexF64, N,N),1:kSize),1:Ki)
-        # calculate interaction term
-        # array of ([X^j,[X^i,X^j]])_K for K = -Λ,...Λ
-        XjcommXiXj_K = map(k->map(kk->zeros(ComplexF64, N,N),1:Ki),1:kSize)
-        # array of ([A,[X^i,A]])_K:
-        AcommXiA_K = map(k->map(kk->zeros(ComplexF64, N,N),1:Ki),1:kSize)
-        Threads.@threads for kp in threePairsK # kp = all 3-pairs adding up to K
-            K_kp = sum(kp[1])+Λ+1
-            for kpK in kp # kpK = one 3-pair adding up to K
-                k1, k2, k3 = map(k->k+Λ+1, kpK) # unpack pair
-                # calculate ([X^j_k1,[X^i_k2,X^j_k3]])_K
-                XjcommXiXj_K[K_kp] += map(Xi->sum(map(Xj->comm(Xj[k1],comm(Xi[k2],Xj[k3])), X)), X) # X^i_k1 for each i
-                # calculate ([A_k1,[X^i_k2,A_k3]])_0
-                AcommXiA_K[K_kp] += map(Xi->comm(A[k1],comm(Xi[k2],A[k3])), X)
-            end
-        end
-        # rearrange term
-        XjcommXiXj = map(i->map(term->term[i], XjcommXiXj_K), 1:Ki)
-        g2_term = XjcommXiXj + 
-        return freeTerm - g^2*XjcommXiXj, XjcommXiXj
+    function freeTerm_i(Xi)
+        return map(k -> freeFact[k].*Xi[k], 1:kSize)
     end
-    δSδX, XjcommXiXj_K = ∂ℓπ∂X()
-    function ∂ℓπ∂A()
-        freeTermA = freeFactA.*A
-        return freeTermA
+    # calculate free term for each X^i
+    freeTerm = map(freeTerm_i, X)
+    # calculate free term for A
+    freeTermA = freeFactA.*A
+    # initialize interaction term up with g^2 coefficent
+    g2_term = map(kk->map(k->zeros(ComplexF64, N,N),1:kSize),1:Ki)
+    # array of ([X^j,[X^i,X^j]])_K for K = -Λ,...Λ
+    init_arr = map(k->map(kk->zeros(ComplexF64, N,N),1:Ki),1:kSize)
+    XjcommXiXj_K = copy(init_arr)
+    # array of ([A,[X^i,A]])_K:
+    AcommXiA_K = copy(init_arr)
+    # array of ([X^i, [A, X^i]]))_K:
+    XicommAXi = map(k->zeros(ComplexF64, N,N),1:kSize)
+    # begin calculation
+    for kp in threePairsK # kp = all 3-pairs adding up to K
+        K_kp = sum(kp[1])+Λ+1
+        for kpK in kp # kpK = one 3-pair adding up to K
+            k1, k2, k3 = map(k->k+Λ+1, kpK) # unpack pair
+            # calculate ([X^j_k1,[X^i_k2,X^j_k3]])_K
+            XjcommXiXj_K[K_kp] += map(Xi->sum(map(Xj->comm(Xj[k1],comm(Xi[k2],Xj[k3])), X)), X) # X^i_k1 for each i
+            # calculate ([A_k1,[X^i_k2,A_k3]])_K
+            AcommXiA_K[K_kp] += map(Xi->comm(A[k1],comm(Xi[k2],A[k3])), X)
+            # calculate ([X^i_k1,[A_k2,X^i_k3]])_K
+            XicommAXi[K_kp] += sum(map(Xi->comm(Xi[k1],comm(A[k2],Xi[k3])), X))
+        end
     end
-    δSδA = ∂ℓπ∂A()
-    # total gradient
+    # reshape terms
+    XjcommXiXj = map(i->map(term->term[i], XjcommXiXj_K), 1:Ki)
+    AcommXiA = map(i->map(term->term[i], AcommXiA_K), 1:Ki)
+    # combine both g^2 term for δSδX
+    g2_term = -g*2(XjcommXiXj - AcommXiA)
+    # calculate the one g^1 term for δSδX:
+    #   (k[X^i_k1, A_k2])_K
+    commXiA = copy(init_arr)
+    commXiXi = map(k->zeros(ComplexF64, N,N), 1:kSize)
+    commAA = map(k->zeros(ComplexF64, N,N), 1:kSize)
+    for kp in twoPairsK # kp = all 3-pairs adding up to K
+        K_kp = sum(kp[1])+Λ+1 # calculate k1+k2=K
+        for kpK in kp # kpK = one 3-pair adding up to K
+            k1, k2 = map(k->k+Λ+1, kpK) # unpack pair
+            # calculate ([X^j_k1,A_k2])_K
+            commXiA[K_kp] += map(Xi->comm(Xi[k1], A[k2]),X)
+            # calculate ([X^i_k1,X^i_k2])_K
+            commXiXi[K_kp] += k2*sum(map(Xi -> comm(Xi[k2], Xi[k3]), X))
+            # calculate (k2 [A_k1,A_k2])_K
+            commAA[K_kp] += k2*comm(A[k1], A[k2])
+        end
+        # multiply by momentum factor
+        commXiA = K_kp*commXiA 
+    end
+    # reshape and multiply by factors
+    commXiA = -2*map(i->map(term->term[i], commXiA), 1:Ki)
+    # calculate variation w.r.t X
+    g_term = g*commXiA
+    δSδX = freeTerm + g_term + g2_term
+    # calculate variation w.r.t A
+    g_term_A = g*(commXiXi + commAA)
+    g2_term_A = g^2*XicommAXi
+    δSδA = freeTermA + g_term_A + g2_term_A
+    # combine gradients
     δSδu = vcat(δSδX, [δSδA])
-    return -action(u), -δSδu, XjcommXiXj_K
+    return -action(u), -δSδu
 end
 # test gradient
-gradtest = ∂ℓπ∂u(uTest)
+gradtest = ∂ℓπ∂u(uTest)[2]
+if typeof(uTest) != typeof(gradtest) println("GRADIENT MISMATCH") end
 # setup HMC
 # Define a Hamiltonian system
 metric = MatrixMetric(N, Λ, K)

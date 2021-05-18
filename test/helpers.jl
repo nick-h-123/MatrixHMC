@@ -11,14 +11,12 @@ function fourierPairs(Λ, n, K)
 
     list = []
     if n == 2
-        for i = 1:2*Λ+1
-            v_i = ks[i]
-            if abs(v_i - K) <= Λ
-                append!(list, [[v_i, -v_i + K]])
+        for i = -Λ:Λ
+            if abs(K-i) <= Λ
+                append!(list, [[i, -i + K]])
             end
         end
-    end
-    if n == 3
+    elseif n == 3
         for i = -Λ:Λ
             for j = -Λ:Λ
                 if abs(K - i - j) <= Λ
@@ -27,8 +25,7 @@ function fourierPairs(Λ, n, K)
                 end
             end
         end
-    end
-    if n == 4
+    elseif n == 4
         for i = -Λ:Λ
             for j = -Λ:Λ
                 for k = -Λ:Λ
@@ -39,6 +36,8 @@ function fourierPairs(Λ, n, K)
                 end
             end
         end
+    else
+        println("n = ", n, " not implemented...")
     end
     return list
 end
@@ -141,6 +140,9 @@ function isHermitian(X::AbstractArray)
 end
 
 function comm(X::AbstractArray,Y::AbstractArray, special=false)
+    if X == Y
+        return 0
+    end
     N = size(X)[1]
     if N == 2 && special
         if isHermitian(X) && isHermitian(Y)
