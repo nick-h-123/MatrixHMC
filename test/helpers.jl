@@ -136,28 +136,74 @@ function expectation_value(f, qs, thresh = 0.001)
     return mean(binned_samples), var(binned_samples)/sqrt(length(sample_is)), k
 end
 
-function comm(X::AbstractArray,Y::AbstractArray)
-    return X*Y-Y*X
+function isHermitian(X::AbstractArray)
+    return Array(Hermitian(X)) == X
+end
+
+function comm(X::AbstractArray,Y::AbstractArray, special=false)
+    N = size(X)[1]
+    if N == 2 && special
+        if isHermitian(X) && isHermitian(Y)
+            x1 = X[2,1]+X[1,2]
+            x2 = X[2,1]-X[1,2]
+            x3 = X[1,1]-X[2,2]
+            y1 = Y[2,1]+Y[1,2]
+            y2 = Y[2,1]-Y[1,2]
+            y3 = Y[1,1]-Y[2,2]
+            # calculate terms
+            arr1 = [0.0 1.0;  1.0  0.0]
+            arr2 = [0.0 1.0; -1.0  0.0]
+            arr3 = [1.0 0.0;  0.0 -1.0]
+            term1 = (x2*y3-x3*y2)*arr1
+            term2 = (x3*y1-x1*y3)*arr2
+            term3 = (x1*y2-x2*y1)*arr3
+            res = 0.5*(term1+term2+term3)
+            return res
+        else
+            return X*Y-Y*X
+        end
+    else
+        return X*Y-Y*X
+    end
 end
 
 k1 = 3
 k2 = 4
 k3 = 5
 k4 = 6
-p = (1,[k1,k2,k3,k4])
+p = (1,[k1,k2,k3, k4])
 function gen_combos(p)
-    k1,k2,k3,k4=p[2]
-    combos = [p]
-    # commutator properties
-    append!(combos, [(-1, [k2,k1,k3,k4])])
-    append!(combos, [(-1, [k1,k2,k4,k3])])
-    append!(combos, [(+1, [k2,k1,k4,k3])])
-    # trace properties
-    append!(combos, [(+1, [k3,k4,k1,k2])])
-    # trace + comm properties
-    append!(combos, [(-1, [k4,k3,k1,k2])])
-    append!(combos, [(-1, [k3,k4,k2,k1])])
-    append!(combos, [(+1, [k4,k3,k2,k1])])
-    return combos
+    n = length(p[2])
+    if n==4
+        k1,k2,k3,k4=p[2]
+        combos = [p]
+        # commutator properties
+        append!(combos, [(-1, [k2,k1,k3,k4])])
+        append!(combos, [(-1, [k1,k2,k4,k3])])
+        append!(combos, [(+1, [k2,k1,k4,k3])])
+        # trace properties
+        append!(combos, [(+1, [k3,k4,k1,k2])])
+        # trace + comm properties
+        append!(combos, [(-1, [k4,k3,k1,k2])])
+        append!(combos, [(-1, [k3,k4,k2,k1])])
+        append!(combos, [(+1, [k4,k3,k2,k1])])
+    elseif n==3
+        k1,k2,k3=p[2]
+        combos = [p]
+        # commutator properties
+        append!(combos, [(-1, [k1,k3,k2])])
+    end
+    return unique(combos)
 end
 combos = gen_combos(p)
+
+"""
+x = randn(ComplexF64, 10,10)
+y = randn(ComplexF64, 10,10)
+xH = Hermitian(x)
+yH = Hermitian(y)
+xHA = Array(xH)
+yHA = Array(yH)
+Array(Hermitian(yHA)) == yHA 
+Array(Hermitian(x)) == x
+"""

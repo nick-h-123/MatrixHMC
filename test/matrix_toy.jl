@@ -4,6 +4,7 @@ using DataFrames, GLM
 using FiniteDifferences
 using MathLink, Optim
 using StatsBase: autocor, tr
+using LaTeXStrings
 
 #include("variational_ON.jl")
 include("helpers.jl")
@@ -11,17 +12,17 @@ include("helpers.jl")
 m = 10.0
 β = 10.0/m
 ω = 2*pi/β
-Λ = 8
+Λ = 10
 fourPairs = fourierPairs(Λ, 4, 0)
 threePairsK = map(k -> fourierPairs(Λ, 3, k), -Λ:Λ)
-N = 2
+N = 4
 K = 9
 g = 1.0
 kSize = 2*Λ+1
 # helper objects
 freeFact = β*map(k -> ((ω*k)^2 + m^2), -Λ:Λ)
 # action and gradient
-function action(X)
+function action(X, useDict=true)
     function free_term_i(Xi) 
         return sum(map(k-> freeFact[k]*real(tr(Xi[k]*Xi[k])), 1:kSize))
     end
@@ -29,8 +30,10 @@ function action(X)
     kP = 1
     if g != 0
         kDict = Dict()
-        Threads.@threads for kp in fourPairs
+        #Threads.@threads 
+        for kp in fourPairs
             k1, k2, k3, k4 = map(k->abs(k)+Λ+1, kp)
+            #println(k1,", ", k2,", ", k3,", ", k4)
             if k1 == k2 || k3 == k4
                 g_term_arr[kP] = 0.0
             else
@@ -45,9 +48,11 @@ function action(X)
                         Xi_term_2 = sum(map(Xi->comm(Xi[k3],Xi[k4]), X))
                     end
                     g_term_arr_kP = real(tr(Xi_term_1*Xi_term_2))
-                    kcombos = gen_combos(p)
-                    for kcombo in kcombos
-                        kDict[kcombo] = kcombo[1]*g_term_arr_kP
+                    if useDict
+                        kcombos = gen_combos(p)
+                        for kcombo in kcombos
+                            kDict[kcombo] = kcombo[1]*g_term_arr_kP
+                        end
                     end
                     g_term_arr[kP] = g_term_arr_kP
                     kP+=1
@@ -63,9 +68,30 @@ end
 metric = MatrixMetric(N, Λ, K)
 Xtest = rand(metric)
 action(Xtest)
-#
+function benchMarkAction()
+    println("Beginning benchmark using dictionary...")
+    bmDataD = @benchmark action(Xtest, true)
+    println("End benchmark using dictionary...")
+    println("Beginning benchmark not using dictionary...")
+    bmDataND = @benchmark action(Xtest, false)
+    println("End benchmark using dictionary...")
+    timesD, timesND = bmDataD.times, bmDataND.times
+    println("Using Dict:")
+    println("\tMean time = ", mean(timesD)/1e6, " ms")
+    println("\tStandard deviation = ", std(timesD)/1e6, " ms")
+    println("-----------------------------------------------------")
+    println("Not using Dict:")
+    println("\tMean time = ", mean(timesND)/1e6, " ms")
+    println("\tStandard deviation = ", std(timesND)/1e6, " ms")
+    println("-----------------------------------------------------")
+    println("Performance ratio = ", mean(timesND)/mean(timesD))
+
+    return
+end
+benchMarkAction()
+# save action into log density for AHMC
 ℓπ(X) = -actiοn(X)
-# Define gradient
+# Define gradient of log density
 function ∂ℓπ∂φ(X::AbstractVector)
     # return free term for each X^i
     function freeTerm_i(Xi)
