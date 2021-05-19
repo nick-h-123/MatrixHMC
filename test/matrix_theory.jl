@@ -9,10 +9,12 @@ using LaTeXStrings
 #include("variational_ON.jl")
 include("helpers.jl")
 m = 10.0 # mass
+β = 10.0/m
 Λ = 8 # max momentum index
 N = 2 # size of each matric
-Ki = 9 # number of bosonic matrices
-g = 1.0 # YM coupling
+Ki = 2 # number of bosonic matrices
+K = Ki+1 # bosonic + gauge
+g = 0.0 # YM coupling
 function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
@@ -34,12 +36,17 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
         #   commXiXi2term = ([X^i, X^i]^2)_0
         #   commAXi2term = ([A,X^i])_0
         #   dXiCommAXiterm = (dX^i[A,X])
-        function free_term_i(Xi) 
-            # TODO: SAVE IN DICT
-            return sum(map(k-> freeFact[k]*real(tr(Xi[k]*Xi[k])), 1:kSize))
+        # free term for X
+        function free_term_i(i) 
+            Xi = X[i]
+            tr_term = map(k->rtr(Xi[k]*Xi[k], true), kSize)
+            return sum(freeFact.*tr_term)
         end
-        freeterm = 0.5*sum(map(free_term_i, X))
-        init_arr = zeros(length(fourPairs))
+        freeterm = 0.5*sum(map(free_term_i, 1:Ki))
+        # include (∂A)^2 term
+        freetermA = 0.5*(sum(map(k->rtr(A[k]*A[k], true), 1:kSize)))
+        # initialize
+        init_arr = zeros(ComplexF64, length(fourPairs))
         commXiXi2term_arr, commAXi2term_arr, dXiCommAXiterm_arr = init_arr, init_arr, init_arr
         kP = 1
         if g != 0
@@ -88,27 +95,23 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                     k1, k2, k3, k4 = map(k->abs(k)+Λ+1, kp)
                     p = (1,[k1,k2,k3,k4])
                     kcombos = gen_combos(p)
-                    if k1 == k2 || k3 == k4
-                        commXiXi2term_arr[kP] = 0.0
+                    if haskey(commXiXj2Dict, p)
+                        commXiXi2term_arr[kP] = commXiXj2Dict[p]
                     else
-                        if haskey(commXiXj2Dict, p)
-                            commXiXi2term_arr[kP] = commXiXj2Dict[p]
-                        else
-                            termij = map(i -> map(j -> commXiXj(i, j, k1, k2)*commXiXj(i, j, k3, k4), 1:Ki), 1:Ki)
-                            commXiXi2term_arr_kP = real(tr(sum(map(sum, termij))))
-                            if useDict
-                                for kcombo in kcombos
-                                    commXiXj2Dict[kcombo] = kcombo[1]*commXiXi2term_arr_kP
-                                end
+                        termij = map(i -> map(j -> commXiXj(i, j, k1, k2)*commXiXj(i, j, k3, k4), 1:Ki), 1:Ki)
+                        commXiXi2term_arr_kP = rtr(sum(map(sum, termij)), true)
+                        if useDict
+                            for kcombo in kcombos
+                                commXiXj2Dict[kcombo] = kcombo[1]*commXiXi2term_arr_kP
                             end
-                            commXiXi2term_arr[kP] = commXiXi2term_arr_kP
                         end
+                        commXiXi2term_arr[kP] = commXiXi2term_arr_kP
                     end
                     # calculate ([A,X^i]^2)_0 term
                     if haskey(commAXi2Dict, p)
                         commAXi2term_arr[kP] = commAXi2Dict[p]
                     else
-                        commAXi2term_arr_kP = real(tr(sum(map(sum, map(i -> commAXi(i, k1, k2)*commAXi(i, k3, k4), 1:Ki)))))
+                        commAXi2term_arr_kP = rtr(sum(map(i -> commAXi(i, k1, k2)*commAXi(i, k3, k4), 1:Ki)), true)
                         if useDict
                             for kcombo in kcombos
                                 commAXi2Dict[kcombo] = kcombo[1]*commAXi2term_arr_kP
@@ -132,7 +135,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                     if haskey(dXiCommAXiDict, p)
                         dXiCommAXiterm_arr[kP] = dXiCommAXiDict[p]
                     else
-                        dXiCommAXiterm_arr_kP = real(tr(sum(map(Xi -> kp[1]*Xi[k1]*comm(A[k2],Xi[k3]), X))))
+                        dXiCommAXiterm_arr_kP = rtr(sum(map(i -> kp[1]*X[i][k1]*commAXi(i, k2, k3), 1:Ki)), true)
                         if useDict
                             for kcombo in kcombos
                                 dXiCommAXiDict[kcombo] = kcombo[1]*dXiCommAXiterm_arr_kP
@@ -142,20 +145,21 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                     end
                     kP+=1
                 end
-                return -β*g^2*sum(dXiCommAXiterm_arr)
+                return β*g*sum(dXiCommAXiterm_arr)
             end
             g_term = calc_gterm()
             return freeterm + g_term + g2_term, commXiXjDict, commAXiDict # if g != 0
         end
-        return freeterm, Dict(), Dict() # if g == 0
+        return freeterm+freetermA, Dict(), Dict() # if g == 0
     end
     function action(u, useDict=true)
-        return actionAndDicts(u, useDict)[1]
+        return real(actionAndDicts(u, useDict)[1])
     end
     # test action
     metric = MatrixMetric(N, Λ, K)
-    # uTest = rand(metric)
-    # action(uTest)
+    uTest = rand(metric)/(K*kSize)
+    s = action(uTest)
+    # println("Im(S)/Re(S) = ", imag(s)/real(s))
     function benchMarkAction()
         println("Beginning benchmark using dictionary...")
         bmDataD = @benchmark action(Xtest, true)
@@ -245,7 +249,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                 for kpK in kp # kpK = one 3-pair adding up to K
                     k1, k2, k3 = map(k->k+Λ+1, kpK) # unpack pair
                     # calculate ([X^j_k1,[X^i_k2,X^j_k3]])_K
-                    XjcommXiXj_K[K_kp] += map(i->sum(map(j->comm(X[j][k1],commXiXj(i,j,k2,k3)), 1:Ki)), 1:Ki) # X^i_k1 for each i
+                    XjcommXiXj_K[K_kp] += map(i->sum(map(j->comm(X[j][k1], commXiXj(i,j,k2,k3)), 1:Ki)), 1:Ki) # X^i_k1 for each i
                     # calculate ([A_k1,[X^i_k2,A_k3]])_K
                     AcommXiA_K[K_kp] += map(i->comm(A[k1],-commAXi(i, k2, k1)), 1:Ki)
                     # calculate ([X^i_k1,[A_k2,X^i_k3]])_K
@@ -256,7 +260,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
             XjcommXiXj = map(i->map(term->term[i], XjcommXiXj_K), 1:Ki)
             AcommXiA = map(i->map(term->term[i], AcommXiA_K), 1:Ki)
             # combine both g^2 term for δSδX
-            g2_term = -β*g*2(XjcommXiXj + AcommXiA)
+            g2_term = -β*g^2*(XjcommXiXj + AcommXiA)
             # calculate the one g^1 term for δSδX:
             #   (k[X^i_k1, A_k2])_K
             commXiA = copy(init_arr)
@@ -269,25 +273,25 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                     # calculate ([X^j_k1,A_k2])_K
                     commXiA[K_kp] += map(i->-commAXi(i, k2, k1), 1:Ki)
                     # calculate ([X^i_k1,X^i_k2])_K
-                    commXiXi[K_kp] += kpK[2]*sum(map(i -> commXiXj(i,i,k1,k2), 1:Ki))
+                    commXiXi[K_kp] += kpK[1]*sum(map(i -> commXiXj(i,i,k1,k2), 1:Ki))
                     # calculate (k2 [A_k1,A_k2])_K
                     commAA[K_kp] += kpK[2]*comm(A[k1], A[k2])
                 end
                 # multiply by momentum factor
-                commXiA = sum(kp[1])*commXiA 
+                commXiA = 2*sum(kp[1])*commXiA 
             end
             # reshape and multiply by factors
-            commXiA = -2*map(i->map(term->term[i], commXiA), 1:Ki)
+            commXiA = map(i->map(term->term[i], commXiA), 1:Ki)
             # calculate variation w.r.t X
             g_term = β*g*commXiA
             δSδX = freeTerm + g_term + g2_term
             # calculate variation w.r.t A
-            g_term_A = -β*g*(commXiXi + commAA)
+            g_term_A = β*g*(-commXiXi + commAA)
             g2_term_A = -β*g^2*XicommAXi
             δSδA = freeTermA + g_term_A + g2_term_A
             # combine gradients
             δSδu = vcat(δSδX, [δSδA])
-            return -action_u, -δSδu
+            return -real(action_u), -δSδu
         end
     end
     # test gradient
@@ -323,9 +327,9 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
     return Xs, As
 end
-n_samples = 10
-n_adapts = 10
-throwaway = 0
+n_samples = 100000
+n_adapts = 200
+throwaway = 1000
 Xs, As  = sample_MT(N, g, m, Λ, 
                     n_samples, n_adapts, throwaway;
                     Ki=Ki);

@@ -203,13 +203,11 @@ function gen_ij_pairs(Ki)
     map(i->map(j->(i,j),1:5),1:5)
 end
 
-"""
-x = randn(ComplexF64, 10,10)
-y = randn(ComplexF64, 10,10)
-xH = Hermitian(x)
-yH = Hermitian(y)
-xHA = Array(xH)
-yHA = Array(yH)
-Array(Hermitian(yHA)) == yHA 
-Array(Hermitian(x)) == x
-"""
+function rtr(X::AbstractArray, re=true)
+    # return real part of trace if re = true
+    if re
+        return real(tr(X))
+    else
+        return tr(X)
+    end
+end
