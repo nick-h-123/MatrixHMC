@@ -18,9 +18,9 @@ fourPairs = fourierPairs(Λ, 4, 0) # k1 + k2 + k3 + k4 = 0
 threePairsK = map(k -> fourierPairs(Λ, 3, k), -Λ:Λ) # k1 + k2 + k3 + k4 = K
 twoPairsK = map(k -> fourierPairs(Λ, 2, k), -Λ:Λ) # k1 + k2 = K
 N = 2 # size of each matric
-Ki = 2 # number of bosonic matrices
+Ki = 9 # number of bosonic matrices
 K = Ki+1 # num of bosonic + one gauge
-g = 0.0 # YM coupling
+g = 0.1 # YM coupling
 kSize = 2*Λ+1 # total num of modes
 # helper objects
 freeFact = β*map(k -> ((ω*k)^2 + m^2), -Λ:Λ) # coefficient for free term
@@ -108,7 +108,7 @@ function action(u, useDict=true)
                 if haskey(dXiCommAXiDict, p)
                     dXiCommAXiterm_arr[kP] = dXiCommAXiDict[p]
                 else
-                    dXiCommAXiterm_arr_kP = real(tr(sum(map(Xi -> k1*Xi[k1]*comm(A[k2],Xi[k3]), X))))
+                    dXiCommAXiterm_arr_kP = real(tr(sum(map(Xi -> kp[1]*Xi[k1]*comm(A[k2],Xi[k3]), X))))
                     if useDict
                         for kcombo in kcombos
                             dXiCommAXiDict[kcombo] = kcombo[1]*dXiCommAXiterm_arr_kP
@@ -154,11 +154,7 @@ end
 ℓπ(u) = -actiοn(u)
 # Define gradient of log density
 function ∂ℓπ∂u(u::AbstractVector)
-    #   u = (X^i, A)
-    #   freeterm = \sum_k (k^2+m^2) X^i_k X^i_{-k}
-    #   commXiXi2term = ([X^i, X^i]^2)_0
-    #   commAXi2term = ([A,X^i])_0
-    #   dXiCommAXiterm = (dX^i[A,X])
+    # u = (X^i, A)
     # unpack
     X = u[1:Ki]
     A = u[K]
@@ -170,64 +166,69 @@ function ∂ℓπ∂u(u::AbstractVector)
     freeTerm = map(freeTerm_i, X)
     # calculate free term for A
     freeTermA = freeFactA.*A
-    # initialize interaction term up with g^2 coefficent
-    g2_term = map(kk->map(k->zeros(ComplexF64, N,N),1:kSize),1:Ki)
-    # array of ([X^j,[X^i,X^j]])_K for K = -Λ,...Λ
-    init_arr = map(k->map(kk->zeros(ComplexF64, N,N),1:Ki),1:kSize)
-    XjcommXiXj_K = copy(init_arr)
-    # array of ([A,[X^i,A]])_K:
-    AcommXiA_K = copy(init_arr)
-    # array of ([X^i, [A, X^i]]))_K:
-    XicommAXi = map(k->zeros(ComplexF64, N,N),1:kSize)
-    # begin calculation
-    for kp in threePairsK # kp = all 3-pairs adding up to K
-        K_kp = sum(kp[1])+Λ+1
-        for kpK in kp # kpK = one 3-pair adding up to K
-            k1, k2, k3 = map(k->k+Λ+1, kpK) # unpack pair
-            # calculate ([X^j_k1,[X^i_k2,X^j_k3]])_K
-            XjcommXiXj_K[K_kp] += map(Xi->sum(map(Xj->comm(Xj[k1],comm(Xi[k2],Xj[k3])), X)), X) # X^i_k1 for each i
-            # calculate ([A_k1,[X^i_k2,A_k3]])_K
-            AcommXiA_K[K_kp] += map(Xi->comm(A[k1],comm(Xi[k2],A[k3])), X)
-            # calculate ([X^i_k1,[A_k2,X^i_k3]])_K
-            XicommAXi[K_kp] += sum(map(Xi->comm(Xi[k1],comm(A[k2],Xi[k3])), X))
+    if g == 0
+        δSδu = vcat(freeTerm, [freeTermA])
+        return -action(u), -δSδu
+    else
+        # initialize interaction term up with g^2 coefficent
+        g2_term = map(kk->map(k->zeros(ComplexF64, N,N),1:kSize),1:Ki)
+        # array of ([X^j,[X^i,X^j]])_K for K = -Λ,...Λ
+        init_arr = map(k->map(kk->zeros(ComplexF64, N,N),1:Ki),1:kSize)
+        XjcommXiXj_K = copy(init_arr)
+        # array of ([A,[X^i,A]])_K:
+        AcommXiA_K = copy(init_arr)
+        # array of ([X^i, [A, X^i]]))_K:
+        XicommAXi = map(k->zeros(ComplexF64, N,N),1:kSize)
+        # begin calculation
+        for kp in threePairsK # kp = all 3-pairs adding up to K
+            K_kp = sum(kp[1])+Λ+1
+            for kpK in kp # kpK = one 3-pair adding up to K
+                k1, k2, k3 = map(k->k+Λ+1, kpK) # unpack pair
+                # calculate ([X^j_k1,[X^i_k2,X^j_k3]])_K
+                XjcommXiXj_K[K_kp] += map(Xi->sum(map(Xj->comm(Xj[k1],comm(Xi[k2],Xj[k3])), X)), X) # X^i_k1 for each i
+                # calculate ([A_k1,[X^i_k2,A_k3]])_K
+                AcommXiA_K[K_kp] += map(Xi->comm(A[k1],comm(Xi[k2],A[k3])), X)
+                # calculate ([X^i_k1,[A_k2,X^i_k3]])_K
+                XicommAXi[K_kp] += sum(map(Xi->comm(Xi[k1],comm(A[k2],Xi[k3])), X))
+            end
         end
-    end
-    # reshape terms
-    XjcommXiXj = map(i->map(term->term[i], XjcommXiXj_K), 1:Ki)
-    AcommXiA = map(i->map(term->term[i], AcommXiA_K), 1:Ki)
-    # combine both g^2 term for δSδX
-    g2_term = -g*2(XjcommXiXj - AcommXiA)
-    # calculate the one g^1 term for δSδX:
-    #   (k[X^i_k1, A_k2])_K
-    commXiA = copy(init_arr)
-    commXiXi = map(k->zeros(ComplexF64, N,N), 1:kSize)
-    commAA = map(k->zeros(ComplexF64, N,N), 1:kSize)
-    for kp in twoPairsK # kp = all 3-pairs adding up to K
-        K_kp = sum(kp[1])+Λ+1 # calculate k1+k2=K
-        for kpK in kp # kpK = one 3-pair adding up to K
-            k1, k2 = map(k->k+Λ+1, kpK) # unpack pair
-            # calculate ([X^j_k1,A_k2])_K
-            commXiA[K_kp] += map(Xi->comm(Xi[k1], A[k2]),X)
-            # calculate ([X^i_k1,X^i_k2])_K
-            commXiXi[K_kp] += k2*sum(map(Xi -> comm(Xi[k2], Xi[k3]), X))
-            # calculate (k2 [A_k1,A_k2])_K
-            commAA[K_kp] += k2*comm(A[k1], A[k2])
+        # reshape terms
+        XjcommXiXj = map(i->map(term->term[i], XjcommXiXj_K), 1:Ki)
+        AcommXiA = map(i->map(term->term[i], AcommXiA_K), 1:Ki)
+        # combine both g^2 term for δSδX
+        g2_term = -β*g*2(XjcommXiXj - AcommXiA)
+        # calculate the one g^1 term for δSδX:
+        #   (k[X^i_k1, A_k2])_K
+        commXiA = copy(init_arr)
+        commXiXi = map(k->zeros(ComplexF64, N,N), 1:kSize)
+        commAA = map(k->zeros(ComplexF64, N,N), 1:kSize)
+        for kp in twoPairsK # kp = all 3-pairs adding up to K
+            K_kp = sum(kp[1])+Λ+1 # calculate k1+k2=K
+            for kpK in kp # kpK = one 3-pair adding up to K
+                k1, k2 = map(k->k+Λ+1, kpK) # unpack pair
+                # calculate ([X^j_k1,A_k2])_K
+                commXiA[K_kp] += map(Xi->comm(Xi[k1], A[k2]),X)
+                # calculate ([X^i_k1,X^i_k2])_K
+                commXiXi[K_kp] += kpK[2]*sum(map(Xi -> comm(Xi[k1], Xi[k2]), X))
+                # calculate (k2 [A_k1,A_k2])_K
+                commAA[K_kp] += kpK[2]*comm(A[k1], A[k2])
+            end
+            # multiply by momentum factor
+            commXiA = K_kp*commXiA 
         end
-        # multiply by momentum factor
-        commXiA = K_kp*commXiA 
+        # reshape and multiply by factors
+        commXiA = -2*map(i->map(term->term[i], commXiA), 1:Ki)
+        # calculate variation w.r.t X
+        g_term = β*g*commXiA
+        δSδX = freeTerm + g_term + g2_term
+        # calculate variation w.r.t A
+        g_term_A = β*g*(-commXiXi + commAA)
+        g2_term_A = -β*g^2*XicommAXi
+        δSδA = freeTermA + g_term_A + g2_term_A
+        # combine gradients
+        δSδu = vcat(δSδX, [δSδA])
+        return -action(u), -δSδu
     end
-    # reshape and multiply by factors
-    commXiA = -2*map(i->map(term->term[i], commXiA), 1:Ki)
-    # calculate variation w.r.t X
-    g_term = g*commXiA
-    δSδX = freeTerm + g_term + g2_term
-    # calculate variation w.r.t A
-    g_term_A = g*(commXiXi + commAA)
-    g2_term_A = g^2*XicommAXi
-    δSδA = freeTermA + g_term_A + g2_term_A
-    # combine gradients
-    δSδu = vcat(δSδX, [δSδA])
-    return -action(u), -δSδu
 end
 # test gradient
 gradtest = ∂ℓπ∂u(uTest)[2]
@@ -237,9 +238,10 @@ if typeof(uTest) != typeof(gradtest) println("GRADIENT MISMATCH") end
 metric = MatrixMetric(N, Λ, K)
 hamiltonian = Hamiltonian(metric, ℓπ, ∂ℓπ∂u)
 # Define a leapfrog solver, with initial step size chosen heuristically
-initial_X = rand(metric)
+initial_u = vcat(rand(metric)[1:Ki]/kSize, [map(k->zeros(ComplexF64, N,N),1:kSize)])
 rng = MersenneTwister(1234)
-initial_ϵ = find_good_stepsize(rng, hamiltonian, initial_X)
+initial_ϵ = find_good_stepsize(rng, hamiltonian, initial_u)
+#initial_ϵ = find_good_vec_stepsize(rng, hamiltonian, initial_u)
 # Define integrator
 integrator = Leapfrog(initial_ϵ)
 # Define an HMC sampler
@@ -256,11 +258,12 @@ progmeter=true
 verb=true
 #MersenneTwister(1234), 
 n_samples = 300
-n_adapts = 300
-throwaway = 300
-Xs, stats = sample(hamiltonian, proposal, initial_X, 
+n_adapts = 100
+throwaway = 200
+us, stats = sample(hamiltonian, proposal, initial_u, 
                    n_samples+throwaway, adaptor, n_adapts,
                    progress=progmeter, verbose=verb);
+Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
 function getData(Xs, throwaway)
     function twopt_0(Xt)
         bs = sum(map(Xtk->map(k -> real(tr(Xtk[Λ+1+k]*Xtk[Λ+1+k])), 0:Λ), Xt))
@@ -271,7 +274,7 @@ function getData(Xs, throwaway)
         # extend sum
         n_ext = 1000 # how long to continue extension (could be automated in future)
         twopt0_ext = twopt0 + extendsum(0, d1, d2, β, n_ext)
-        return m*twopt0_ext/(K*N^2)
+        return m*twopt0_ext/(Ki*N^2)
     end
     Xkeeps = Xs[throwaway+1:end]
     #twopt_data = map(twopt_0, Xkeeps)
@@ -296,5 +299,5 @@ plot!(twopt_0s_ave, label="mean",
       title=string("Equal time 2-point: ", "N = ", N, ", g = ", g),
       linewidth=2)
 xlabel!("Number of samples")
-display(ylabel!(L"\frac{9 m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"))
+display(ylabel!(L"\frac{K m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"))
 #savefig("twopt_MT.png")

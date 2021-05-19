@@ -95,8 +95,11 @@ NesterovDualAveraging(
 # Ref: https://github.com/stan-dev/stan/blob/develop/src/stan/mcmc/stepsize_adaptation.hpp
 # Note: This function is not merged with `adapt!` to empahsize the fact that
 #       step size adaptation is not dependent on `θ`.
-function adapt_stepsize!(da::NesterovDualAveraging{T}, α::AbstractScalarOrVec{<:T}) where {T<:AbstractFloat}
+function adapt_stepsize!(da::NesterovDualAveraging{T}, α) where {T<:AbstractFloat}
     DEBUG && @debug "Adapting step size..." α
+
+    @unpack state, γ, t_0, κ, δ = da
+    @unpack μ, m, x_bar, H_bar = state
 
     # Clip average MH acceptance probability
     if α isa AbstractVector
@@ -104,9 +107,6 @@ function adapt_stepsize!(da::NesterovDualAveraging{T}, α::AbstractScalarOrVec{<
     else
         α = α > 1 ? one(T) : α
     end
-
-    @unpack state, γ, t_0, κ, δ = da
-    @unpack μ, m, x_bar, H_bar = state
 
     m = m + 1
 

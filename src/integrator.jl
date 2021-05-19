@@ -66,7 +66,7 @@ function step(
     n_steps = abs(n_steps)  # to support `n_steps < 0` cases
 
     ϵ = fwd ? step_size(lf) : -step_size(lf)
-    ϵ = ϵ'
+    #ϵ = ϵ'
 
     res = if FullTraj
         Vector{P}(undef, n_steps)

@@ -39,7 +39,7 @@ export Trajectory, HMCKernel,
        FixedNSteps, FixedIntegrationTime,
        ClassicNoUTurn, GeneralisedNoUTurn, StrictGeneralisedNoUTurn,
        EndPointTS, SliceTS, MultinomialTS, 
-       find_good_stepsize
+       find_good_stepsize, find_good_vec_stepsize
 
 abstract type AbstractTrajectory end
 

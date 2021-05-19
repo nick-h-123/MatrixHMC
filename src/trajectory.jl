@@ -456,6 +456,96 @@ function find_good_stepsize(
     return find_good_stepsize(GLOBAL_RNG, h, θ; max_n_iters=max_n_iters)
 end
 
+function find_good_vec_stepsize(
+    rng::AbstractRNG,
+    h::Hamiltonian,
+    θ::AbstractArray;
+    max_n_iters::Int=100,
+)
+    # Initialize searching parameters
+    K = length(θ)
+    function vectorize(float::Float64)
+        map(ki->float, 1:K)
+    end
+    ϵ′ = ϵ = vectorize(Float64(0.1))
+    a_min, a_cross, a_max = vectorize(Float64(0.25)), vectorize(Float64(0.5)), vectorize(Float64(0.75)) # minimal, crossing, maximal accept ratio
+    d = vectorize(Float64(2.0))
+    # Create starting phase point
+    r = rand(rng, h.metric) # sample momentum variable
+    z = phasepoint(h, θ, r)
+    H = energy(z)
+
+    # Make a proposal phase point to decide direction
+    z′, H′ = A(h, z, ϵ)
+    ΔH = H - H′ # compute the energy difference; `exp(ΔH)` is the MH accept ratio
+    direction = map(a_cross_ki -> ΔH > log(a_cross_ki) ? 1 : -1, a_cross)
+
+    # Crossing step: increase/decrease ϵ until accept ratio cross a_cross.
+    for _ = 1:max_n_iters
+        # `direction` being  `1` means MH ratio too high
+        #     - this means our step size is too small, thus we increase
+        # `direction` being `-1` means MH ratio too small
+        #     - this means our step szie is too large, thus we decrease
+        ϵ′ = map(i->direction[i] == 1 ? d[i] * ϵ[i] : 1 / d[i] * ϵ[i], 1:K)
+        z′, H′ = A(h, z, ϵ)
+        ΔH = H - H′
+        DEBUG && @debug "Crossing step" direction H′ ϵ "α = $(min(1, exp(ΔH)))"
+        if all(map(dir_i-> dir_i== 1, direction)) && !all(map(a_cross_i -> ΔH > log(a_cross_i), a_cross))
+            break
+        elseif all(map(dir_i-> dir_i== -1, direction))  && !all(map(a_cross_i -> ΔH > log(a_cross_i), a_cross))
+            break
+        else
+            ϵ = ϵ′
+        end
+    end
+    # Note after the for loop,
+    # `ϵ` and `ϵ′` are the two neighbour step sizes across `a_cross`.
+
+    # Bisection step: ensure final accept ratio: a_min < a < a_max.
+    # See https://en.wikipedia.org/wiki/Bisection_method
+
+    #ϵ, ϵ′ = ϵ < ϵ′ ? (ϵ, ϵ′) : (ϵ′, ϵ)  # ensure ϵ < ϵ′;
+    # ensure ϵ < ϵ′
+    for i = 1:K
+        if ϵ[i] > ϵ′[i]
+            ϵi = copy(ϵ[i])
+            ϵ[i] = copy(ϵ′[i])
+            ϵ′[i] =ϵi
+        end
+    end
+    # Here we want to use a value between these two given the
+    # criteria that this value also gives us a MH ratio between `a_min` and `a_max`.
+    # This condition is quite mild and only intended to avoid cases where
+    # the middle value of `ϵ` and `ϵ′` is too extreme.
+    for _ = 1:max_n_iters
+        ϵ_mid = map(i->middle(ϵ[i], ϵ′[i]), 1:K)
+        z′, H′ = A(h, z, ϵ_mid)
+        ΔH = H - H′
+        DEBUG && @debug "Bisection step" H′ ϵ_mid "α = $(min(1, exp(ΔH)))"
+        expΔH = exp(ΔH)
+        for i = 1:K
+            if (expΔH > a_max[i])
+                ϵ[i] = ϵ_mid[i]
+            elseif (expΔH < a_min[i])
+                ϵ′[i] = ϵ_mid[i]
+            else
+                ϵ[i] = ϵ_mid[i]
+                break
+            end
+        end
+    end
+
+    return ϵ
+end
+
+function find_good_vec_stepsize(
+    h::Hamiltonian,
+    θ::AbstractArray;
+    max_n_iters::Int=100,
+)
+    return find_good_vec_stepsize(GLOBAL_RNG, h, θ; max_n_iters=max_n_iters)
+end
+
 "Perform MH acceptance based on energy, i.e. negative log probability."
 function mh_accept_ratio(
     rng::AbstractRNG,

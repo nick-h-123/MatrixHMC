@@ -139,11 +139,11 @@ function isHermitian(X::AbstractArray)
     return Array(Hermitian(X)) == X
 end
 
-function comm(X::AbstractArray,Y::AbstractArray, special=false)
-    if X == Y
-        return 0
-    end
+function comm(X::Array{T, 2},Y::Array{T, 2}, special=false) where T
     N = size(X)[1]
+    if X == Y
+        return zeros(T, N, N)
+    end
     if N == 2 && special
         if isHermitian(X) && isHermitian(Y)
             x1 = X[2,1]+X[1,2]
