@@ -199,6 +199,10 @@ function gen_combos(p)
 end
 combos = gen_combos(p)
 
+function gen_ij_pairs(Ki)
+    map(i->map(j->(i,j),1:5),1:5)
+end
+
 """
 x = randn(ComplexF64, 10,10)
 y = randn(ComplexF64, 10,10)
