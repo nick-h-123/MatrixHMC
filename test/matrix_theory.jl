@@ -8,13 +8,13 @@ using LaTeXStrings
 
 #include("variational_ON.jl")
 include("helpers.jl")
-m = 10.0 # mass
+m = 1.0 # mass
 β = 10.0/m
 Λ = 8 # max momentum index
 N = 2 # size of each matric
-Ki = 2 # number of bosonic matrices
-K = Ki+1 # bosonic + gauge
-g = 0.0 # YM coupling
+Kii = 2 # number of bosonic matrices
+K = Kii+1 # bosonic + gauge
+g = 0.5 # YM coupling
 function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
@@ -37,19 +37,18 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
         #   commAXi2term = ([A,X^i])_0
         #   dXiCommAXiterm = (dX^i[A,X])
         # free term for X
-        function free_term_i(i) 
-            Xi = X[i]
-            tr_term = map(k->rtr(Xi[k]*Xi[k], true), kSize)
+        function free_term_i(Xi) 
+            tr_term = map(k->rtr(Xi[k]*Xi[k], true), 1:kSize)
             return sum(freeFact.*tr_term)
         end
-        freeterm = 0.5*sum(map(free_term_i, 1:Ki))
+        freeterm = 0.5*sum(map(free_term_i, X))
         # include (∂A)^2 term
         freetermA = 0.5*(sum(map(k->rtr(A[k]*A[k], true), 1:kSize)))
         # initialize
         init_arr = zeros(ComplexF64, length(fourPairs))
         commXiXi2term_arr, commAXi2term_arr, dXiCommAXiterm_arr = init_arr, init_arr, init_arr
         kP = 1
-        if g != 0
+        if g != 0.0
             # initialize dictionaries for trace terms
             commXiXj2Dict, commAXi2Dict = Dict(), Dict()
             commAXi2Dict, dXiCommAXiDict = Dict(), Dict()
@@ -148,9 +147,9 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                 return β*g*sum(dXiCommAXiterm_arr)
             end
             g_term = calc_gterm()
-            return freeterm + g_term + g2_term, commXiXjDict, commAXiDict # if g != 0
+            return freeterm  + freetermA + g_term + g2_term, commXiXjDict, commAXiDict # if g != 0
         end
-        return freeterm+freetermA, Dict(), Dict() # if g == 0
+        return freeterm, Dict(), Dict() # if g == 0
     end
     function action(u, useDict=true)
         return real(actionAndDicts(u, useDict)[1])
@@ -158,6 +157,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     # test action
     metric = MatrixMetric(N, Λ, K)
     uTest = rand(metric)/(K*kSize)
+    # uTest[end] = map(k->zeros(ComplexF64, N,N), 1:kSize)
     s = action(uTest)
     # println("Im(S)/Re(S) = ", imag(s)/real(s))
     function benchMarkAction()
@@ -189,18 +189,16 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
         # unpack
         X = u[1:Ki]
         A = u[K]
-        # return free term for each X^i
-        function freeTerm_i(Xi)
-            return map(k -> freeFact[k].*Xi[k], 1:kSize)
-        end
         # calculate free term for each X^i
-        freeTerm = map(freeTerm_i, X)
+        freeTerm = map(Xi->freeFact.*Xi, X)
         # calculate free term for A
         freeTermA = freeFactA.*A
+        # freeTermA = map(k->zeros(ComplexF64, N,N), 1:kSize)
         if g == 0
             δSδu = vcat(freeTerm, [freeTermA])
-            return -action_u, -δSδu
+            return -real(action_u), -δSδu
         else
+            freeTermA = freeFactA.*A
             # calculate comm([Xi_k1, Xj_k2]) and store in Dict
             function commXiXj(i, j, k1, k2)
                 Xi, Xj = X[i], X[j]
@@ -295,7 +293,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
         end
     end
     # test gradient
-    # gradtest = ∂ℓπ∂u(uTest)[2]
+    # gradtest = ∂ℓπ∂u(uTest)[2][end]
     # if typeof(uTest) != typeof(gradtest) println("GRADIENT MISMATCH") end
     # setup HMC
     # Define a Hamiltonian system
@@ -310,11 +308,11 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     integrator = Leapfrog(initial_ϵ)
     # Define an HMC sampler
     # Set number of leapfrog steps
-    n_steps = 2
+    n_steps = 1
     # Set the number of warmup iterations
     proposal = StaticTrajectory(integrator, n_steps)
     #adaptor =  StanHMCAdaptor(MassMatrixAdaptor(metric), StepSizeAdaptor(0.65, integrator))
-    adaptor = StepSizeAdaptor(0.8, integrator)
+    adaptor = StepSizeAdaptor(0.65, integrator)
     # Run the sampler to draw samples from the specified Gaussian, where
     #   - `samples` will store the samples
     #   - `stats` will store diagnostic statistics for each sample
@@ -327,12 +325,12 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
     return Xs, As
 end
-n_samples = 100000
-n_adapts = 200
-throwaway = 1000
+n_samples = 10
+n_adapts = 0
+throwaway = 10
 Xs, As  = sample_MT(N, g, m, Λ, 
                     n_samples, n_adapts, throwaway;
-                    Ki=Ki);
+                    Ki=Kii);
 # calculate observables
 function getData(Xs, throwaway)
     function twopt_0(Xt)
@@ -344,7 +342,7 @@ function getData(Xs, throwaway)
         # extend sum
         n_ext = 1000 # how long to continue extension (could be automated in future)
         twopt0_ext = twopt0 + extendsum(0, d1, d2, β, n_ext)
-        return m*twopt0_ext/(Ki*N^2)
+        return m*twopt0_ext/(Kii*N^2)
     end
     Xkeeps = Xs[throwaway+1:end]
     #twopt_data = map(twopt_0, Xkeeps)
@@ -367,7 +365,8 @@ plot(twopt_0s, label="value",
      linewidth=1)
 plot!(twopt_0s_ave, label="mean",
       title=string("Equal time 2-point: ", "N = ", N, ", g = ", g),
-      linewidth=2)
+      linewidth=2, legend = false)
 xlabel!("Number of samples")
 display(ylabel!(L"\frac{K m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"))
 #savefig("twopt_MT.png")
+# plot(map(Asi->sum(map(Ask->rtr(Ask*Ask),Asi)),As), legend=false)
