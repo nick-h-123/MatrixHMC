@@ -14,7 +14,7 @@ m = 1.0 # mass
 N = 2 # size of each matric
 Kii = 2 # number of bosonic matrices
 K = Kii+1 # bosonic + gauge
-g = 0.5 # YM coupling
+g = 0.1 # YM coupling
 function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
@@ -97,8 +97,8 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                     if haskey(commXiXj2Dict, p)
                         commXiXi2term_arr[kP] = commXiXj2Dict[p]
                     else
-                        termij = map(i -> map(j -> commXiXj(i, j, k1, k2)*commXiXj(i, j, k3, k4), 1:Ki), 1:Ki)
-                        commXiXi2term_arr_kP = rtr(sum(map(sum, termij)), true)
+                        termij = map(i -> map(j -> rtr(commXiXj(i, j, k1, k2)*commXiXj(i, j, k3, k4)), 1:Ki), 1:Ki)
+                        commXiXi2term_arr_kP = sum(map(sum, termij))
                         if useDict
                             for kcombo in kcombos
                                 commXiXj2Dict[kcombo] = kcombo[1]*commXiXi2term_arr_kP
@@ -110,7 +110,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                     if haskey(commAXi2Dict, p)
                         commAXi2term_arr[kP] = commAXi2Dict[p]
                     else
-                        commAXi2term_arr_kP = rtr(sum(map(i -> commAXi(i, k1, k2)*commAXi(i, k3, k4), 1:Ki)), true)
+                        commAXi2term_arr_kP = sum(map(i -> rtr(commAXi(i, k1, k2)*commAXi(i, k3, k4)), 1:Ki))
                         if useDict
                             for kcombo in kcombos
                                 commAXi2Dict[kcombo] = kcombo[1]*commAXi2term_arr_kP
@@ -151,7 +151,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
         end
         return freeterm, Dict(), Dict() # if g == 0
     end
-    function action(u, useDict=true)
+    function action(u, useDict=false)
         return real(actionAndDicts(u, useDict)[1])
     end
     # test action
@@ -326,7 +326,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     return Xs, As
 end
 n_samples = 10
-n_adapts = 0
+n_adapts = 20
 throwaway = 10
 Xs, As  = sample_MT(N, g, m, Λ, 
                     n_samples, n_adapts, throwaway;
