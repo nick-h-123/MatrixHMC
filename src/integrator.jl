@@ -74,7 +74,7 @@ struct DragLeapfrog{T<:AbstractScalarOrVec{<:AbstractFloat}} <: AbstractLeapfrog
     "Step size."
     ϵ       ::  T
 end
-Base.show(io::IO, l::MTLeapfrog) = print(io, "DragLeapfrog(ϵ=$(round.(l.ϵ; sigdigits=3)))")
+Base.show(io::IO, l::DragLeapfrog) = print(io, "DragLeapfrog(ϵ=$(round.(l.ϵ; sigdigits=3)))")
 
 function step(
     lf::Leapfrog{T},

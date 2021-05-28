@@ -8,13 +8,13 @@ using LaTeXStrings
 
 #include("variational_ON.jl")
 include("helpers.jl")
-m = 1.0 # mass
-β = 10.0/m
-Λ = 3 # max momentum index
+m = 10.0 # mass
+β = 10.0/m; ω = 2*pi/β
+Λ = 8 # max momentum index
 N = 2 # size of each matric
-Ki = 2 # number of bosonic matrices
+Ki = 9 # number of bosonic matrices
 K = Ki+1 # bosonic + gauge
-g = 0.01 # YM coupling
+g = 0.1 # YM coupling
 function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
@@ -188,16 +188,16 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
         # unpack
         X = u[1:Ki]
         A = u[K]
+        init_arr = map(k->map(kk->zeros(ComplexF64, N,N),1:Ki),1:kSize)
         # calculate free term for each X^i
         freeTerm = map(Xi->freeFact.*Xi, X)
         # calculate free term for A
         freeTermA = freeFactA.*A
         # freeTermA = map(k->zeros(ComplexF64, N,N), 1:kSize)
         if g == 0
-            δSδu = vcat(freeTerm, [freeTermA])
-            return -real(action_u), -δSδu
+            δSδu = vcat(freeTerm, [map(k->zeros(ComplexF64, N,N), 1:kSize)])
+            return -real(action_u), vcat([-δSδu],[vcat(map(kk->map(k->zeros(ComplexF64, N,N),1:kSize),1:Ki), [freeTermA])])
         else
-            freeTermA = freeFactA.*A
             # calculate comm([Xi_k1, Xj_k2]) and store in Dict
             function commXiXj(i, j, k1, k2)
                 Xi, Xj = X[i], X[j]
@@ -234,7 +234,6 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
             # initialize interaction term up with g^2 coefficent
             g2_term = map(kk->map(k->zeros(ComplexF64, N,N),1:kSize),1:Ki)
             # array of ([X^j,[X^i,X^j]])_K for K = -Λ,...Λ
-            init_arr = map(k->map(kk->zeros(ComplexF64, N,N),1:Ki),1:kSize)
             XjcommXiXj_K = copy(init_arr)
             # array of ([A,[X^i,A]])_K:
             AcommXiA_K = copy(init_arr)
@@ -328,42 +327,66 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
     return Xs, As
 end
-n_samples = 3000
-throwaway = 200
-n_adapts = n_samples + throwaway
+n_samples = 300
+throwaway = 50
+n_adapts = 300
 Xs, As  = sample_MT(N, g, m, Λ, 
                     n_samples, n_adapts, throwaway;
-                    Ki=Kii);
+                    Ki=Ki);
 # calculate observables
 function getData(Xs, throwaway)
-    function twopt_0(Xt)
+    function twopt_t(Xt, t)
         bs = sum(map(Xtk->map(k -> real(tr(Xtk[Λ+1+k]*Xtk[Λ+1+k])), 0:Λ), Xt))
-        twopt0 = bs[1] + 2*sum(bs[2:end])
+        twoptt = bs[1] + 2*sum(map(k -> cos(ω*k*t), 1:Λ).*bs[2:end])
         # calculate coefficients for extensions
-        d1 = bs[Λ+1]*Λ^2
-        d2 = 0
+        bΛ = bs[Λ+1]
+        bmΛ = bs[Λ]
+        if g ==0
+            d1 = bs[Λ+1]*Λ^2
+            d2 = 0
+        else
+            d1 = (bΛ*Λ^4-bmΛ*(Λ-1)^4)/(2*Λ-1)
+            d2 = (-bΛ*Λ^2+bmΛ*(Λ-1)^2)*Λ^2*(Λ-1)^2/(2*Λ-1)
+        end
         # extend sum
         n_ext = 1000 # how long to continue extension (could be automated in future)
-        twopt0_ext = twopt0 + extendsum(0, d1, d2, β, n_ext)
-        return m*twopt0_ext/(Kii*N^2)
+        twopt_t_ext = twoptt + extendsum(t, d1, d2, β, n_ext)
+        #return m*twopt_t_ext/(Ki*N^2)
+        return twopt_t_ext
     end
     Xkeeps = Xs[throwaway+1:end]
     #twopt_data = map(twopt_0, Xkeeps)
     #twopt_0s = map(x->x[1], twopt_data)
     #twopt_0_exts = map(x->x[2], twopt_data)
-    twopt_0s = map(twopt_0, Xkeeps)
+    twopt_0s = map(Xt -> twopt_t(Xt, 0), Xkeeps)
     twopt_0s_ave = running_ave(twopt_0s)
-    twopts_0_ave = expectation_value(twopt_0, Xkeeps, 0.01)
-    return twopts_0_ave, twopt_0s, twopt_0s_ave
+    twopts_0_ave = expectation_value(Xt -> twopt_t(Xt, 0), Xkeeps, 0.01)
+    twopt_t_func = t->mean(map(Xt -> twopt_t(Xt, t), Xkeeps))
+    function massdata(twopt_func, β)
+        tmax = 1/(Λ*ω)
+        tmin = tmax/100
+        npts = 100
+        ts = tmin:(tmax-tmin)/(npts-1):(tmax)
+        twopts = map(twopt_func, ts)
+        if any(x->x<0, twopts)
+            return (0,0)
+        end
+        log_twopt_func = t->log(twopt_func(t))
+        d_log=map(t->forward_fdm(2,1,adapt=1)(log_twopt_func, t), ts)
+        return -mean(d_log), std(d_log)
+    end
+    m_eff = massdata(twopt_t_func, β)
+    return twopts_0_ave, twopt_0s, twopt_0s_ave, twopt_t_func, m_eff
 end
 function extendsum(t, d1, d2, β, Λmax=0)
     if Λmax == 0 Λmax = max(Int(Λ*10), 1000) end
     return sum(map(n -> 2*(d1/n^2+d2/n^4)*cos(n*(2*pi/β)*t), Λ+1:Λmax))
 end
 # generate data
-twopt_0, twopt_0s, twopt_0s_ave = getData(Xs, throwaway)
+twopt_0, twopt_0s, twopt_0s_ave, twopt_t_func, m_eff = getData(Xs, throwaway)
 println("mK<X^i(0)X^i(0)>/N^2 = ", round.(twopt_0[1], sigdigits=5))
 println("Effective sample size = ", n_samples/twopt_0[3])
+println("m_eff/m = ", round.(m_eff[1]/m, sigdigits=4), " ± ", round.(m_eff[2]/m, sigdigits=3))
 plot(twopt_0s, label="value",
      linewidth=1)
 plot!(twopt_0s_ave, label="mean",
@@ -372,4 +395,12 @@ plot!(twopt_0s_ave, label="mean",
 xlabel!("Number of samples")
 display(ylabel!(L"\frac{K m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"))
 #savefig("twopt_MT.png")
-# plot(map(Asi->sum(map(Ask->rtr(Ask*Ask),Asi)),As), legend=false)
+ts = 0:β/100:β/2
+plot(ts, twopt_t_func)
+"""
+tmax = 1/(Λ*ω)
+tmin = tmax/100
+npts = 100
+ts_test = tmin:(tmax-tmin)/(npts-1):(tmax)
+plot(ts_test, twopt_t_func)
+"""
