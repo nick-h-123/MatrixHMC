@@ -70,11 +70,11 @@ struct Leapfrog{T<:AbstractScalarOrVec{<:AbstractFloat}} <: AbstractLeapfrog{T}
 end
 Base.show(io::IO, l::Leapfrog) = print(io, "Leapfrog(ϵ=$(round.(l.ϵ; sigdigits=3)))")
 
-struct MTLeapfrog{T<:AbstractScalarOrVec{<:AbstractFloat}} <: AbstractLeapfrog{T}
+struct DragLeapfrog{T<:AbstractScalarOrVec{<:AbstractFloat}} <: AbstractLeapfrog{T}
     "Step size."
     ϵ       ::  T
 end
-Base.show(io::IO, l::MTLeapfrog) = print(io, "Leapfrog(ϵ=$(round.(l.ϵ; sigdigits=3)))")
+Base.show(io::IO, l::MTLeapfrog) = print(io, "DragLeapfrog(ϵ=$(round.(l.ϵ; sigdigits=3)))")
 
 function step(
     lf::Leapfrog{T},
@@ -104,7 +104,7 @@ function step(
         r = r - ϵ / 2 .* gradient
         # Take a full leapfrog step for position variable
         ∇r = ∂H∂r(h, r)
-        θ = θ + ϵ .* ∇r
+        θ = θ + ϵ .* ∇r[1]
         # Take a half leapfrog step for momentum variable
         @unpack value, gradient = ∂H∂θ(h, θ)
         r = r - ϵ / 2 .* gradient
@@ -130,7 +130,7 @@ function step(
 end
 
 function step(
-    lf::MTLeapfrog{T},
+    lf::DragLeapfrog{T},
     h::Hamiltonian,
     z::P,
     n_steps::Int=1;
@@ -138,10 +138,8 @@ function step(
     full_trajectory::Val{FullTraj} = Val(false)
 ) where {T<:AbstractScalarOrVec{<:AbstractFloat}, P<:PhasePoint, FullTraj}
     n_steps = abs(n_steps)  # to support `n_steps < 0` cases
-
     ϵ = fwd ? step_size(lf) : -step_size(lf)
     #ϵ = ϵ'
-
     res = if FullTraj
         Vector{P}(undef, n_steps)
     else
@@ -150,17 +148,20 @@ function step(
 
     @unpack θ, r = z
     @unpack value, gradient = z.ℓπ
+    grad = gradient[1]
+    drag = gradient[2]
     for i = 1:n_steps
         # Tempering
         r = temper(lf, r, (i=i, is_half=true), n_steps)
         # Take a half leapfrog step for momentum variable
-        r = r - ϵ / 2 .* gradient
+        r = r - ϵ / 2 .* grad
         # Take a full leapfrog step for position variable
         ∇r = ∂H∂r(h, r)
-        θ = θ + ϵ .* ∇r
+        θ = θ + ϵ .* ∇r[1] +  ϵ^2 / 2 .* drag
         # Take a half leapfrog step for momentum variable
         @unpack value, gradient = ∂H∂θ(h, θ)
-        r = r - ϵ / 2 .* gradient
+        grad = gradient[1]
+        r = r - ϵ / 2 .* grad
         # Tempering
         r = temper(lf, r, (i=i, is_half=false), n_steps)
         # Create a new phase point by caching the logdensity and gradient

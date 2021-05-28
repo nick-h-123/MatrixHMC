@@ -10,11 +10,11 @@ using LaTeXStrings
 include("helpers.jl")
 m = 1.0 # mass
 β = 10.0/m
-Λ = 8 # max momentum index
+Λ = 3 # max momentum index
 N = 2 # size of each matric
-Kii = 2 # number of bosonic matrices
-K = Kii+1 # bosonic + gauge
-g = 0.1 # YM coupling
+Ki = 2 # number of bosonic matrices
+K = Ki+1 # bosonic + gauge
+g = 0.01 # YM coupling
 function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
@@ -156,8 +156,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     end
     # test action
     metric = MatrixMetric(N, Λ, K)
-    uTest = rand(metric)/(K*kSize)
-    # uTest[end] = map(k->zeros(ComplexF64, N,N), 1:kSize)
+    uTest = rand(metric)
     s = action(uTest)
     # println("Im(S)/Re(S) = ", imag(s)/real(s))
     function benchMarkAction()
@@ -261,7 +260,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
             g2_term = -β*g^2*(XjcommXiXj + AcommXiA)
             # calculate the one g^1 term for δSδX:
             #   (k[X^i_k1, A_k2])_K
-            commXiA = copy(init_arr)
+            commXiA, commXiA_drag = copy(init_arr), copy(init_arr)
             commXiXi = map(k->zeros(ComplexF64, N,N), 1:kSize)
             commAA = map(k->zeros(ComplexF64, N,N), 1:kSize)
             for kp in twoPairsK # kp = all 3-pairs adding up to K
@@ -269,31 +268,36 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                 for kpK in kp # kpK = one 3-pair adding up to K
                     k1, k2 = map(k->k+Λ+1, kpK) # unpack pair
                     # calculate ([X^j_k1,A_k2])_K
-                    commXiA[K_kp] += map(i->-commAXi(i, k2, k1), 1:Ki)
+                    commXiA_K_kp = map(i->-commAXi(i, k2, k1), 1:Ki)
+                    commXiA[K_kp] += (2*kpK[1]+kpK[2])*commXiA_K_kp
+                    commXiA_drag[K_kp] += kpK[1]*commXiA_K_kp
                     # calculate ([X^i_k1,X^i_k2])_K
                     commXiXi[K_kp] += kpK[1]*sum(map(i -> commXiXj(i,i,k1,k2), 1:Ki))
                     # calculate (k2 [A_k1,A_k2])_K
                     commAA[K_kp] += kpK[2]*comm(A[k1], A[k2])
                 end
                 # multiply by momentum factor
-                commXiA = 2*sum(kp[1])*commXiA 
             end
             # reshape and multiply by factors
             commXiA = map(i->map(term->term[i], commXiA), 1:Ki)
+            commXiA_drag = map(i->map(term->term[i], commXiA_drag), 1:Ki)
             # calculate variation w.r.t X
             g_term = β*g*commXiA
             δSδX = freeTerm + g_term + g2_term
+            drag_X = β*g*commXiA_drag
             # calculate variation w.r.t A
-            g_term_A = β*g*(-commXiXi + commAA)
+            g_term_A = -β*g*commXiXi
             g2_term_A = -β*g^2*XicommAXi
-            δSδA = freeTermA + g_term_A + g2_term_A
+            δSδA = g2_term_A + g_term_A
+            drag_A = (freeTermA + β*g*commAA)
             # combine gradients
             δSδu = vcat(δSδX, [δSδA])
-            return -real(action_u), -δSδu
+            drag = vcat(drag_X, [drag_A])
+            return -real(action_u), vcat([-δSδu], [drag])
         end
     end
     # test gradient
-    # gradtest = ∂ℓπ∂u(uTest)[2][end]
+    gradtest = ∂ℓπ∂u(uTest)[2]
     # if typeof(uTest) != typeof(gradtest) println("GRADIENT MISMATCH") end
     # setup HMC
     # Define a Hamiltonian system
@@ -302,10 +306,10 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     # Define a leapfrog solver, with initial step size chosen heuristically
     initial_u = vcat(rand(metric)[1:Ki]/kSize, [map(k->zeros(ComplexF64, N,N),1:kSize)])
     rng = MersenneTwister(1234)
-    initial_ϵ = find_good_stepsize(rng, hamiltonian, initial_u)
+    initial_ϵ = find_good_stepsize(rng, hamiltonian, initial_u, DragLeapfrog)
     #initial_ϵ = find_good_vec_stepsize(rng, hamiltonian, initial_u)
     # Define integrator
-    integrator = Leapfrog(initial_ϵ)
+    integrator = DragLeapfrog(initial_ϵ)
     # Define an HMC sampler
     # Set number of leapfrog steps
     n_steps = 1
@@ -318,16 +322,15 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     #   - `stats` will store diagnostic statistics for each sample
     progmeter=true
     verb=true
-    #MersenneTwister(1234), 
-    us, stats = sample(hamiltonian, proposal, initial_u, 
+    us, stats = sample(rng, hamiltonian, proposal, initial_u, 
                     n_samples+throwaway, adaptor, n_adapts,
-                    progress=progmeter, verbose=verb)
+                    progress=progmeter, verbose=verb);
     Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
     return Xs, As
 end
-n_samples = 10
-n_adapts = 20
-throwaway = 10
+n_samples = 3000
+throwaway = 200
+n_adapts = n_samples + throwaway
 Xs, As  = sample_MT(N, g, m, Λ, 
                     n_samples, n_adapts, throwaway;
                     Ki=Kii);

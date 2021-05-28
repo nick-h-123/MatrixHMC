@@ -32,7 +32,7 @@ include("hamiltonian.jl")
 export Hamiltonian
 
 include("integrator.jl")
-export Leapfrog, JitteredLeapfrog, TemperedLeapfrog
+export Leapfrog, DragLeapfrog
 
 include("trajectory.jl")
 export Trajectory, HMCKernel,

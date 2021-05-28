@@ -374,8 +374,8 @@ A single Hamiltonian integration step.
 
 NOTE: this function is intended to be used in `find_good_stepsize` only.
 """
-function A(h, z, ϵ)
-    z′ = step(Leapfrog(ϵ), h, z)
+function A(h, z, ϵ, Leapfrogger = Leapfrog)
+    z′ = step(Leapfrogger(ϵ), h, z)
     H′ = energy(z′)
     return z′, H′
 end
@@ -384,7 +384,8 @@ end
 function find_good_stepsize(
     rng::AbstractRNG,
     h::Hamiltonian,
-    θ::AbstractArray;
+    θ::AbstractArray,
+    Leapfrogger = Leapfrog;
     max_n_iters::Int=100,
 )
     # Initialize searching parameters
@@ -397,7 +398,7 @@ function find_good_stepsize(
     H = energy(z)
 
     # Make a proposal phase point to decide direction
-    z′, H′ = A(h, z, ϵ)
+    z′, H′ = A(h, z, ϵ, Leapfrogger)
     ΔH = H - H′ # compute the energy difference; `exp(ΔH)` is the MH accept ratio
     direction = ΔH > log(a_cross) ? 1 : -1
 
@@ -408,7 +409,7 @@ function find_good_stepsize(
         # `direction` being `-1` means MH ratio too small
         #     - this means our step szie is too large, thus we decrease
         ϵ′ = direction == 1 ? d * ϵ : 1 / d * ϵ
-        z′, H′ = A(h, z, ϵ)
+        z′, H′ = A(h, z, ϵ, Leapfrogger)
         ΔH = H - H′
         DEBUG && @debug "Crossing step" direction H′ ϵ "α = $(min(1, exp(ΔH)))"
         if (direction == 1) && !(ΔH > log(a_cross))
@@ -432,7 +433,7 @@ function find_good_stepsize(
     # the middle value of `ϵ` and `ϵ′` is too extreme.
     for _ = 1:max_n_iters
         ϵ_mid = middle(ϵ, ϵ′)
-        z′, H′ = A(h, z, ϵ_mid)
+        z′, H′ = A(h, z, ϵ_mid, Leapfrogger)
         ΔH = H - H′
         DEBUG && @debug "Bisection step" H′ ϵ_mid "α = $(min(1, exp(ΔH)))"
         if (exp(ΔH) > a_max)

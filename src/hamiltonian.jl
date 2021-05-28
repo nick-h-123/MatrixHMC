@@ -36,7 +36,7 @@ function ∂H∂r(h::Hamiltonian{<:HermitianMetric}, r::AbstractVecOrMat)
 end
 
 function ∂H∂r(h::Hamiltonian{<:MatrixMetric}, r::AbstractArray)
-    return r
+    return vcat([r], [0*rand(h.metric)])
 end
 
 struct PhasePoint{T<:AbstractArray, V<:DualValue}
@@ -45,7 +45,7 @@ struct PhasePoint{T<:AbstractArray, V<:DualValue}
     ℓπ::V # Cached neg potential energy for the current θ.
     ℓκ::V # Cached neg kinect energy for the current r.
     function PhasePoint(θ::T, r::T, ℓπ::V, ℓκ::V) where {T, V}
-        @argcheck length(θ) == length(r) == length(ℓπ.gradient) == length(ℓπ.gradient)
+        @argcheck length(θ) == length(r) == length(ℓπ.gradient[1]) == length(ℓπ.gradient[1])
         if any(isfinite.((θ, r, ℓπ, ℓκ)) .== false)
             @warn "The current proposal will be rejected due to numerical error(s)." isfinite.((θ, r, ℓπ, ℓκ))
             ℓπ = DualValue(map(v -> isfinite(v) ? v : -Inf, ℓπ.value), ℓπ.gradient)
