@@ -14,7 +14,7 @@ m = 10.0 # mass
 N = 2 # size of each matric
 Ki = 9 # number of bosonic matrices
 K = Ki+1 # bosonic + gauge
-g = 0.1 # YM coupling
+g = 1.0 # YM coupling
 function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
@@ -315,7 +315,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     # Set the number of warmup iterations
     proposal = StaticTrajectory(integrator, n_steps)
     #adaptor =  StanHMCAdaptor(MassMatrixAdaptor(metric), StepSizeAdaptor(0.65, integrator))
-    adaptor = StepSizeAdaptor(0.65, integrator)
+    adaptor = StepSizeAdaptor(0.7, integrator)
     # Run the sampler to draw samples from the specified Gaussian, where
     #   - `samples` will store the samples
     #   - `stats` will store diagnostic statistics for each sample
@@ -327,8 +327,8 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
     return Xs, As
 end
-n_samples = 300
-throwaway = 50
+n_samples = 500
+throwaway = 200
 n_adapts = 300
 Xs, As  = sample_MT(N, g, m, Λ, 
                     n_samples, n_adapts, throwaway;
@@ -351,8 +351,7 @@ function getData(Xs, throwaway)
         # extend sum
         n_ext = 1000 # how long to continue extension (could be automated in future)
         twopt_t_ext = twoptt + extendsum(t, d1, d2, β, n_ext)
-        #return m*twopt_t_ext/(Ki*N^2)
-        return twopt_t_ext
+        return m*twopt_t_ext/(Ki*N^2)
     end
     Xkeeps = Xs[throwaway+1:end]
     #twopt_data = map(twopt_0, Xkeeps)
@@ -397,10 +396,9 @@ display(ylabel!(L"\frac{K m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"
 #savefig("twopt_MT.png")
 ts = 0:β/100:β/2
 plot(ts, twopt_t_func)
-"""
+
 tmax = 1/(Λ*ω)
 tmin = tmax/100
 npts = 100
 ts_test = tmin:(tmax-tmin)/(npts-1):(tmax)
 plot(ts_test, twopt_t_func)
-"""
