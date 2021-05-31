@@ -1,4 +1,4 @@
-name = "ComplexAdvancedHMC"
+name = "MatrixHMC"
 uuid = "17e4c508-8901-11eb-8dcd-0242ac130003"
 version = "0.1.0"
 
