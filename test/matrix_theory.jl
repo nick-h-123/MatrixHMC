@@ -11,11 +11,11 @@ include("helpers.jl")
 m = 10.0 # mass
 β = 10.0/m; ω = 2*pi/β
 Λ = 8 # max momentum index
-N = 2 # size of each matric
+N = 4 # size of each matric
 Ki = 9 # number of bosonic matrices
 K = Ki+1 # bosonic + gauge
 g = 1.0 # YM coupling
-function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
+function sample_MT(N, g, m, Λ, n_samples, n_adapts; prog=true, drop=false, Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
     threePairs = fourierPairs(Λ, 3, 0) # k1 + k2 + k3 = 0
@@ -147,7 +147,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
                 return β*g*sum(dXiCommAXiterm_arr)
             end
             g_term = calc_gterm()
-            return freeterm  + freetermA + g_term + g2_term, commXiXjDict, commAXiDict # if g != 0
+            return freeterm + g_term + g2_term, commXiXjDict, commAXiDict # if g != 0
         end
         return freeterm, Dict(), Dict() # if g == 0
     end
@@ -319,22 +319,19 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts, throwaway; Ki=9)
     # Run the sampler to draw samples from the specified Gaussian, where
     #   - `samples` will store the samples
     #   - `stats` will store diagnostic statistics for each sample
-    progmeter=true
     verb=true
     us, stats = sample(rng, hamiltonian, proposal, initial_u, 
-                    n_samples+throwaway, adaptor, n_adapts,
-                    progress=progmeter, verbose=verb);
+                    n_samples, adaptor, n_adapts,
+                    drop_warmup=drop, progress=prog, verbose=verb);
     Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
     return Xs, As
 end
-n_samples = 500
-throwaway = 200
-n_adapts = 300
-Xs, As  = sample_MT(N, g, m, Λ, 
-                    n_samples, n_adapts, throwaway;
-                    Ki=Ki);
 # calculate observables
-function getData(Xs, throwaway)
+function getData(Xs)
+    function extendsum(t, d1, d2, β, Λmax=0)
+        if Λmax == 0 Λmax = max(Int(Λ*10), 1000) end
+        return sum(map(n -> 2*(d1/n^2+d2/n^4)*cos(n*(2*pi/β)*t), Λ+1:Λmax))
+    end
     function twopt_t(Xt, t)
         bs = sum(map(Xtk->map(k -> real(tr(Xtk[Λ+1+k]*Xtk[Λ+1+k])), 0:Λ), Xt))
         twoptt = bs[1] + 2*sum(map(k -> cos(ω*k*t), 1:Λ).*bs[2:end])
@@ -353,14 +350,13 @@ function getData(Xs, throwaway)
         twopt_t_ext = twoptt + extendsum(t, d1, d2, β, n_ext)
         return m*twopt_t_ext/(Ki*N^2)
     end
-    Xkeeps = Xs[throwaway+1:end]
     #twopt_data = map(twopt_0, Xkeeps)
     #twopt_0s = map(x->x[1], twopt_data)
     #twopt_0_exts = map(x->x[2], twopt_data)
-    twopt_0s = map(Xt -> twopt_t(Xt, 0), Xkeeps)
+    twopt_0s = map(Xt -> twopt_t(Xt, 0), Xs)
     twopt_0s_ave = running_ave(twopt_0s)
-    twopts_0_ave = expectation_value(Xt -> twopt_t(Xt, 0), Xkeeps, 0.01)
-    twopt_t_func = t->mean(map(Xt -> twopt_t(Xt, t), Xkeeps))
+    twopts_0_ave = expectation_value(Xt -> twopt_t(Xt, 0), Xs, 0.01)
+    twopt_t_func = t->mean(map(Xt -> twopt_t(Xt, t), Xs))
     function massdata(twopt_func, β)
         tmax = 1/(Λ*ω)
         tmin = tmax/100
@@ -377,12 +373,28 @@ function getData(Xs, throwaway)
     m_eff = massdata(twopt_t_func, β)
     return twopts_0_ave, twopt_0s, twopt_0s_ave, twopt_t_func, m_eff
 end
-function extendsum(t, d1, d2, β, Λmax=0)
-    if Λmax == 0 Λmax = max(Int(Λ*10), 1000) end
-    return sum(map(n -> 2*(d1/n^2+d2/n^4)*cos(n*(2*pi/β)*t), Λ+1:Λmax))
+n_adapts = 100
+n_samples = 300 + n_adapts
+nchains = 8
+Xs, As, data = Array{Any,1}(undef, nchains), Array{Any,1}(undef, nchains), Array{Any,1}(undef, nchains)
+Threads.@threads for i = 1:nchains
+    if i == 1 
+        progi = true 
+    else 
+        progi = false 
+    end
+    Xs[i], As[i] = sample_MT(N, g, m, Λ, 
+                        n_samples, n_adapts; prog=progi, drop = true, Ki=Ki)
+    data[i] = getData(Xs[i])                
 end
+ms = map(d->d[end][1], data)
+m_errs = map(d->d[end][2], data)
+m_ave = mean(ms)
+m_err = sqrt(sum(m_errs.^2)/nchains)/sqrt(nchains)
+println("\nm_eff/m = ", m_ave/m, " ± ", m_err)
+
 # generate data
-twopt_0, twopt_0s, twopt_0s_ave, twopt_t_func, m_eff = getData(Xs, throwaway)
+twopt_0, twopt_0s, twopt_0s_ave, twopt_t_func, m_eff = getData(Xs[1])
 println("mK<X^i(0)X^i(0)>/N^2 = ", round.(twopt_0[1], sigdigits=5))
 println("Effective sample size = ", n_samples/twopt_0[3])
 println("m_eff/m = ", round.(m_eff[1]/m, sigdigits=4), " ± ", round.(m_eff[2]/m, sigdigits=3))
@@ -396,9 +408,22 @@ display(ylabel!(L"\frac{K m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"
 #savefig("twopt_MT.png")
 ts = 0:β/100:β/2
 plot(ts, twopt_t_func)
-
 tmax = 1/(Λ*ω)
 tmin = tmax/100
 npts = 100
 ts_test = tmin:(tmax-tmin)/(npts-1):(tmax)
 plot(ts_test, twopt_t_func)
+"""
+function computeCouplingEnsemble(m, NN, n_samples, g_min, g_max, n_g; V_warmup=0, throwaway=100)
+    # collect samples and data across m values
+    gs = Array(g_min:(g_max-g_min)/(n_g-1):g_max)
+    println("gs = ", λs)
+    us = Array{Any,1}(undef, n_g)
+    data = Array{Any,1}(undef, n_g)
+    Threads.@threads for i = 1:n_g
+        gi=gs[i]
+        us[i], stats = computeSamples(m, gi, NN, initial_φ, n_samples)
+        data[i] = ensemble_data(phis[i], m, gi, Λ/m, throwaway)
+    end
+    return data
+end
