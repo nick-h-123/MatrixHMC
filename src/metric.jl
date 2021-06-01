@@ -207,20 +207,21 @@ function _rand(
     NN = metric.N
     ΛΛ = metric.Λ
     KK = metric.K
+    """
     function hMat()
         temp = randn(ComplexF64, NN, NN)
         return Array(sqrt(0.5)*(temp+adjoint(temp)))
     end
+    """
     function getp_i()
-        oneTokSize = map(i->hMat(),1:ΛΛ)
-        mkSizetoMOne = reverse(oneTokSize)
-        zeroMode = Array(randn(ComplexF64, NN, NN))
+        oneTokSize = map(i->randn(rng, ComplexF64, NN, NN),1:ΛΛ)
+        mkSizetoMOne = adjoint.(reverse(oneTokSize))
+        zeroMode = Array(randn(rng, ComplexF64, NN, NN))
         zeroMode = sqrt(0.5)*(zeroMode+adjoint(zeroMode))
         return Array(vcat(mkSizetoMOne, [zeroMode], oneTokSize))
     end
     return map(kk->getp_i(), 1:KK)
 end
-
 Base.rand(rng::AbstractRNG, metric::AbstractMetric) = _rand(rng, metric)    # this disambiguity is required by Random.rand
 Base.rand(rng::AbstractVector{<:AbstractRNG}, metric::AbstractMetric) = _rand(rng, metric)
 Base.rand(metric::AbstractMetric) = rand(GLOBAL_RNG, metric)

@@ -11,8 +11,8 @@ include("helpers.jl")
 m = 10.0 # mass
 β = 10.0/m; ω = 2*pi/β
 Λ = 8 # max momentum index
-N = 4 # size of each matric
-Ki = 9 # number of bosonic matrices
+N = 2 # size of each matric
+Ki = 3 # number of bosonic matrices
 K = Ki+1 # bosonic + gauge
 g = 1.0 # YM coupling
 function sample_MT(N, g, m, Λ, n_samples, n_adapts; prog=true, drop=false, Ki=9)
@@ -326,6 +326,7 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts; prog=true, drop=false, Ki=9
     Xs, As = map(ut->ut[1:Ki], us), map(ut->ut[K], us)
     return Xs, As
 end
+metric = MatrixMetric(N, Λ, K)
 # calculate observables
 function getData(Xs)
     function extendsum(t, d1, d2, β, Λmax=0)
@@ -378,11 +379,7 @@ n_samples = 300 + n_adapts
 nchains = 8
 Xs, As, data = Array{Any,1}(undef, nchains), Array{Any,1}(undef, nchains), Array{Any,1}(undef, nchains)
 Threads.@threads for i = 1:nchains
-    if i == 1 
-        progi = true 
-    else 
-        progi = false 
-    end
+    if i == 1 progi = true else progi = false end
     Xs[i], As[i] = sample_MT(N, g, m, Λ, 
                         n_samples, n_adapts; prog=progi, drop = true, Ki=Ki)
     data[i] = getData(Xs[i])                
@@ -413,17 +410,30 @@ tmin = tmax/100
 npts = 100
 ts_test = tmin:(tmax-tmin)/(npts-1):(tmax)
 plot(ts_test, twopt_t_func)
-"""
-function computeCouplingEnsemble(m, NN, n_samples, g_min, g_max, n_g; V_warmup=0, throwaway=100)
-    # collect samples and data across m values
-    gs = Array(g_min:(g_max-g_min)/(n_g-1):g_max)
-    println("gs = ", λs)
-    us = Array{Any,1}(undef, n_g)
-    data = Array{Any,1}(undef, n_g)
-    Threads.@threads for i = 1:n_g
-        gi=gs[i]
-        us[i], stats = computeSamples(m, gi, NN, initial_φ, n_samples)
-        data[i] = ensemble_data(phis[i], m, gi, Λ/m, throwaway)
+# effective coupling:
+#   g^2/μ^3 = λ
+function computeCouplingEnsemble(μ, NN, n_samples, n_adapts, λ_min, λ_max, n_λ)
+    λs = Array(λ_min:(λ_max-λ_min)/(n_λ-1):λ_max)
+    println("λs = ", λs)
+    Xs = Array{Any,1}(undef, n_λ)
+    data = Array{Any,1}(undef, n_λ)
+    Threads.@threads for i = 1:n_λ
+        λi=λs[i]
+        gi = sqrt(λi*μ^3)
+        if i == 1 progi = true else progi = false end
+        Xs[i], As = sample_MT(NN, gi, m, Λ, 
+                          n_samples, n_adapts; prog=progi, drop = true, Ki=Ki)
+        data[i] = getData(Xs[i])
     end
     return data
 end
+μ = 0.1
+β = 10.0/μ; ω = 2*pi/β; Λ = 8
+NN = 2
+λc = 0.064/(NN*NN)
+λmin = λc/2
+λmax = 2*λc
+nλ = 5
+n_samples = 40
+n_adapts = 10
+data = computeCouplingEnsemble(μ, NN, n_samples, n_adapts, λmin, λmax, nλ)
