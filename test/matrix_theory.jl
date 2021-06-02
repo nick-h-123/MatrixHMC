@@ -5,17 +5,16 @@ using FiniteDifferences
 using MathLink, Optim
 using StatsBase: autocor, tr
 using LaTeXStrings
-
 #include("variational_ON.jl")
 include("helpers.jl")
-m = 10.0 # mass
+m = 1.0 # mass
 β = 10.0/m; ω = 2*pi/β
 Λ = 8 # max momentum index
-N = 2 # size of each matric
+N = 5 # size of each matric
 Ki = 3 # number of bosonic matrices
 K = Ki+1 # bosonic + gauge
-g = 1.0 # YM coupling
-function sample_MT(N, g, m, Λ, n_samples, n_adapts; prog=true, drop=false, Ki=9)
+g = 0.0 # YM coupling
+function sample_MT(N, g, m, Λ, n_samples, n_adapts; prog=true, verb=true, drop=false, Ki=9)
     β = 10.0/m # total time
     ω = 2*pi/β # momentum spacing
     threePairs = fourierPairs(Λ, 3, 0) # k1 + k2 + k3 = 0
@@ -315,11 +314,10 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts; prog=true, drop=false, Ki=9
     # Set the number of warmup iterations
     proposal = StaticTrajectory(integrator, n_steps)
     #adaptor =  StanHMCAdaptor(MassMatrixAdaptor(metric), StepSizeAdaptor(0.65, integrator))
-    adaptor = StepSizeAdaptor(0.7, integrator)
+    adaptor = StepSizeAdaptor(0.85, integrator)
     # Run the sampler to draw samples from the specified Gaussian, where
     #   - `samples` will store the samples
     #   - `stats` will store diagnostic statistics for each sample
-    verb=true
     us, stats = sample(rng, hamiltonian, proposal, initial_u, 
                     n_samples, adaptor, n_adapts,
                     drop_warmup=drop, progress=prog, verbose=verb);
@@ -327,6 +325,17 @@ function sample_MT(N, g, m, Λ, n_samples, n_adapts; prog=true, drop=false, Ki=9
     return Xs, As
 end
 metric = MatrixMetric(N, Λ, K)
+n = 10000
+c = zeros(2*Λ+1)
+c2 = zeros(2*Λ+1)
+for i = 1:n
+    test = rand(metric)[1]
+    c += map(mat->tr(mat*adjoint(mat)), test)
+    test2 = rand(HermitianMetric(2*Λ+1))
+    c2 += map(mat->tr(mat*adjoint(mat)), test2)
+end
+sum(c/n)
+c2[1:Λ+1]/=n
 # calculate observables
 function getData(Xs)
     function extendsum(t, d1, d2, β, Λmax=0)
@@ -351,32 +360,30 @@ function getData(Xs)
         twopt_t_ext = twoptt + extendsum(t, d1, d2, β, n_ext)
         return m*twopt_t_ext/(Ki*N^2)
     end
-    #twopt_data = map(twopt_0, Xkeeps)
-    #twopt_0s = map(x->x[1], twopt_data)
-    #twopt_0_exts = map(x->x[2], twopt_data)
     twopt_0s = map(Xt -> twopt_t(Xt, 0), Xs)
     twopt_0s_ave = running_ave(twopt_0s)
     twopts_0_ave = expectation_value(Xt -> twopt_t(Xt, 0), Xs, 0.01)
     twopt_t_func = t->mean(map(Xt -> twopt_t(Xt, t), Xs))
     function massdata(twopt_func, β)
-        tmax = 1/(Λ*ω)
+        tmax = β/100
         tmin = tmax/100
-        npts = 100
+        npts = 20
         ts = tmin:(tmax-tmin)/(npts-1):(tmax)
         twopts = map(twopt_func, ts)
         if any(x->x<0, twopts)
             return (0,0)
         end
-        log_twopt_func = t->log(twopt_func(t))
-        d_log=map(t->forward_fdm(2,1,adapt=1)(log_twopt_func, t), ts)
-        return -mean(d_log), std(d_log)
+        log_twopt = log.(twopts)
+        lr_data = DataFrame(X=ts, Y=log_twopt)
+        ols = lm(@formula(Y ~ X), lr_data)
+        return -coeftable(ols).cols[1][2], coeftable(ols).cols[2][2]
     end
     m_eff = massdata(twopt_t_func, β)
     return twopts_0_ave, twopt_0s, twopt_0s_ave, twopt_t_func, m_eff
 end
-n_adapts = 100
-n_samples = 300 + n_adapts
-nchains = 8
+n_adapts = 200
+n_samples = 500 + n_adapts
+nchains = 1
 Xs, As, data = Array{Any,1}(undef, nchains), Array{Any,1}(undef, nchains), Array{Any,1}(undef, nchains)
 Threads.@threads for i = 1:nchains
     if i == 1 progi = true else progi = false end
@@ -389,7 +396,6 @@ m_errs = map(d->d[end][2], data)
 m_ave = mean(ms)
 m_err = sqrt(sum(m_errs.^2)/nchains)/sqrt(nchains)
 println("\nm_eff/m = ", m_ave/m, " ± ", m_err)
-
 # generate data
 twopt_0, twopt_0s, twopt_0s_ave, twopt_t_func, m_eff = getData(Xs[1])
 println("mK<X^i(0)X^i(0)>/N^2 = ", round.(twopt_0[1], sigdigits=5))
@@ -405,27 +411,33 @@ display(ylabel!(L"\frac{K m}{N^2} \langle tr \left[X^i(0) X^i(0)\right] \rangle"
 #savefig("twopt_MT.png")
 ts = 0:β/100:β/2
 plot(ts, twopt_t_func)
-tmax = 1/(Λ*ω)
+tmax = β/100
 tmin = tmax/100
-npts = 100
+npts = 50
 ts_test = tmin:(tmax-tmin)/(npts-1):(tmax)
-plot(ts_test, twopt_t_func)
+plot(ts_test, t->log(twopt_t_func(t)))
 # effective coupling:
 #   g^2/μ^3 = λ
-function computeCouplingEnsemble(μ, NN, n_samples, n_adapts, λ_min, λ_max, n_λ)
+function computeCouplingEnsemble(μ, NN, n_samples, n_adapts, λ_min, λ_max, n_λ::Int, nchains::Int)
     λs = Array(λ_min:(λ_max-λ_min)/(n_λ-1):λ_max)
     println("λs = ", λs)
-    Xs = Array{Any,1}(undef, n_λ)
-    data = Array{Any,1}(undef, n_λ)
-    Threads.@threads for i = 1:n_λ
-        λi=λs[i]
-        gi = sqrt(λi*μ^3)
-        if i == 1 progi = true else progi = false end
-        Xs[i], As = sample_MT(NN, gi, m, Λ, 
-                          n_samples, n_adapts; prog=progi, drop = true, Ki=Ki)
-        data[i] = getData(Xs[i])
+    bigData = Array{Any,1}(undef, nchains)
+    for i = 1:nchains
+        println("Started sampling for chain ", i, "...")
+        Xs, data = Array{Any,1}(undef, n_λ), Array{Any,1}(undef, n_λ)
+        Threads.@threads for j = 1:n_λ
+            λi=λs[j]
+            gi = sqrt(λi*μ^3)
+            if mod(j, Threads.nthreads())==1 progi = true else progi = false end
+            Xs[j], As = sample_MT(NN, gi, m, Λ, 
+                            n_samples, n_adapts; prog=progi, verb=false, drop=true, Ki=Ki)
+            data[j] = getData(Xs[j])
+            println("\tFinished sampling for λ = ", λi, "...")
+        end
+        bigData[i] = data
+        println("Finished sampling for chain ", i, "...")
     end
-    return data
+    return bigData
 end
 μ = 0.1
 β = 10.0/μ; ω = 2*pi/β; Λ = 8
@@ -433,7 +445,33 @@ NN = 2
 λc = 0.064/(NN*NN)
 λmin = λc/2
 λmax = 2*λc
-nλ = 5
-n_samples = 40
-n_adapts = 10
-data = computeCouplingEnsemble(μ, NN, n_samples, n_adapts, λmin, λmax, nλ)
+nλ = 12; nchains = 5;
+λarr = Array(λmin:(λmax-λmin)/(nλ-1):λmax)
+n_samples = 350
+n_adapts = 100
+data = computeCouplingEnsemble(μ, NN, n_samples, n_adapts, λmin, λmax, nλ, nchains);
+#
+#
+function unpack_data(data)
+    nchains = length(data)
+    dataUP = Array{Any,1}(undef, length(data[1]))
+    dataUP = map(i->map(dat->dat[i], data), 1:length(data[1]))
+    return dataUP
+end
+dataUP = unpack_data(data)
+ms = map(dat->map(dat2->dat2[5][1], dat), dataUP)
+m_aves = map(mean, ms)
+m_errs = map(std, ms)/sqrt(nchains)
+pathname = "C:/Users/HMCUser/Dropbox/Nick/Code/nh_MT/plots/"
+titleStr = string("N = ", NN, ", μ = ", μ, ", D = ", K, ", L = ", n_samples-n_adapts)
+scatter(λarr, m_aves, yerr=m_errs, legend=false, xlabel="λ = g^2/μ^3", ylabel="μ_eff")
+title!(titleStr)
+filename = string("plot-masses-sim-N-",NN,"-mu-",μ,"-D-",K,"-L-",n_samples-n_adapts,".pdf")
+savefig(string(pathname, filename))
+# ess = map(effective_sample_size, map(dat->map(dat2->dat2[2], dat), dataUP))
+twopts = (Ki/μ)*map(mean, map(dat->map(dat2->dat2[3][end], dat), dataUP))
+twopt_errs = (Ki/μ)*map(std, map(dat->map(dat2->dat2[3][end], dat), dataUP))
+scatter(λarr, twopts, yerr=twopt_errs, ylabel="Tr(Xi^2)/N^2", xlabel="λ = g^2/μ^3", legend=false)
+title!(titleStr)
+filename = string("plot-corrs-sim-N-",NN,"-mu-",μ,"-D-",K,"-L-",n_samples-n_adapts,".pdf")
+savefig(string(pathname, filename))

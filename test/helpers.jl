@@ -139,7 +139,7 @@ function isHermitian(X::AbstractArray)
     return Array(Hermitian(X)) == X
 end
 
-function comm(X::Array{T, 2},Y::Array{T, 2}, special=false) where T
+function comm(X::Array{Complex{Float64},2},Y::Array{Complex{Float64},2}, special=false)
     N = size(X)[1]
     if X == Y
         return zeros(T, N, N)
