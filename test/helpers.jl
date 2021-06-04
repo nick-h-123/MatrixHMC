@@ -142,7 +142,7 @@ end
 function comm(X::Array{Complex{Float64},2},Y::Array{Complex{Float64},2}, special=false)
     N = size(X)[1]
     if X == Y
-        return zeros(T, N, N)
+        return zeros(ComplexF64, N, N)
     end
     if N == 2 && special
         if isHermitian(X) && isHermitian(Y)

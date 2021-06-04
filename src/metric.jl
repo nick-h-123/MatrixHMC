@@ -147,7 +147,7 @@ function _rand(
         return map(i -> rand(HermitianMetric(metric.M⁻¹[i], sqrt.(metric.M⁻¹[i]), similar(metric.M⁻¹[i]), 1)), 1:numArrs)
     end
 end
-
+"""
 function _rand(
     rng::Union{AbstractRNG, AbstractVector{<:AbstractRNG}},
     metric::MatrixMetric
@@ -168,8 +168,8 @@ function _rand(
     end
     return map(kk->getp_i(), 1:KK)
 end
-
 """
+
 function _rand(
     rng::Union{AbstractRNG, AbstractVector{<:AbstractRNG}},
     metric::MatrixMetric
@@ -178,15 +178,15 @@ function _rand(
     ΛΛ = metric.Λ
     KK = metric.K
     function getp_i()
-        oneTokSize = map(i->0.5*randn(rng, ComplexF64, NN, NN),1:ΛΛ)
+        oneTokSize = map(i->randn(rng, ComplexF64, NN, NN),1:ΛΛ)
         mkSizetoMOne = map(mat->Array(conj(transpose(mat))), reverse(oneTokSize))
-        zeroMode = Array(0.5*randn(rng, ComplexF64, NN, NN))
+        zeroMode = Array(randn(rng, ComplexF64, NN, NN))
         zeroMode = sqrt(0.5)*(zeroMode+Array(adjoint(zeroMode)))
         return Array(vcat(mkSizetoMOne, [zeroMode], oneTokSize))
     end
     return map(kk->getp_i(), 1:KK)
 end
-"""
+
 Base.rand(rng::AbstractRNG, metric::AbstractMetric) = _rand(rng, metric)    # this disambiguity is required by Random.rand
 Base.rand(rng::AbstractVector{<:AbstractRNG}, metric::AbstractMetric) = _rand(rng, metric)
 Base.rand(metric::AbstractMetric) = rand(GLOBAL_RNG, metric)
